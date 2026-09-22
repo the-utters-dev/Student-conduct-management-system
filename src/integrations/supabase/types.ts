@@ -47,6 +47,36 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          payload: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          payload?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          payload?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       conduct_logs: {
         Row: {
           created_at: string
@@ -122,6 +152,64 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "student_conduct_balances"
             referencedColumns: ["term_id"]
+          },
+        ]
+      }
+      notification_logs: {
+        Row: {
+          conduct_log_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          message_body: string
+          recipient_phone: string | null
+          sent_at: string | null
+          status: string
+          student_id: string | null
+        }
+        Insert: {
+          conduct_log_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_body: string
+          recipient_phone?: string | null
+          sent_at?: string | null
+          status?: string
+          student_id?: string | null
+        }
+        Update: {
+          conduct_log_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_body?: string
+          recipient_phone?: string | null
+          sent_at?: string | null
+          status?: string
+          student_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_logs_conduct_log_id_fkey"
+            columns: ["conduct_log_id"]
+            isOneToOne: false
+            referencedRelation: "conduct_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "student_conduct_balances"
+            referencedColumns: ["student_id"]
+          },
+          {
+            foreignKeyName: "notification_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
           },
         ]
       }
