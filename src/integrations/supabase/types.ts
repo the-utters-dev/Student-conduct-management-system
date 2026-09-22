@@ -14,16 +14,279 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      academic_terms: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          is_active: boolean
+          name: string
+          start_date: string
+          starting_marks: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          is_active?: boolean
+          name: string
+          start_date: string
+          starting_marks?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          start_date?: string
+          starting_marks?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      conduct_logs: {
+        Row: {
+          created_at: string
+          entry_type: string
+          id: string
+          marks: number
+          occurred_on: string
+          offense_id: string | null
+          reason: string | null
+          recorded_by: string | null
+          student_id: string
+          term_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entry_type?: string
+          id?: string
+          marks: number
+          occurred_on?: string
+          offense_id?: string | null
+          reason?: string | null
+          recorded_by?: string | null
+          student_id: string
+          term_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entry_type?: string
+          id?: string
+          marks?: number
+          occurred_on?: string
+          offense_id?: string | null
+          reason?: string | null
+          recorded_by?: string | null
+          student_id?: string
+          term_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conduct_logs_offense_id_fkey"
+            columns: ["offense_id"]
+            isOneToOne: false
+            referencedRelation: "offenses_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conduct_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "student_conduct_balances"
+            referencedColumns: ["student_id"]
+          },
+          {
+            foreignKeyName: "conduct_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conduct_logs_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: false
+            referencedRelation: "academic_terms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conduct_logs_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: false
+            referencedRelation: "student_conduct_balances"
+            referencedColumns: ["term_id"]
+          },
+        ]
+      }
+      offenses_catalog: {
+        Row: {
+          category: string
+          code: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          marks_deducted: number
+          severity: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          marks_deducted?: number
+          severity?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          marks_deducted?: number
+          severity?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          job_title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id: string
+          job_title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          job_title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          admission_no: string
+          class_name: string
+          created_at: string
+          full_name: string
+          gender: string | null
+          house: string | null
+          id: string
+          is_active: boolean
+          parent_name: string | null
+          parent_phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          admission_no: string
+          class_name: string
+          created_at?: string
+          full_name: string
+          gender?: string | null
+          house?: string | null
+          id?: string
+          is_active?: boolean
+          parent_name?: string | null
+          parent_phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          admission_no?: string
+          class_name?: string
+          created_at?: string
+          full_name?: string
+          gender?: string | null
+          house?: string | null
+          id?: string
+          is_active?: boolean
+          parent_name?: string | null
+          parent_phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      student_conduct_balances: {
+        Row: {
+          admission_no: string | null
+          class_name: string | null
+          current_marks: number | null
+          entries_count: number | null
+          full_name: string | null
+          house: string | null
+          marks_deducted: number | null
+          marks_restored: number | null
+          parent_phone: string | null
+          starting_marks: number | null
+          student_id: string | null
+          term_id: string | null
+          term_name: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_discipline_staff: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "discipline_admin" | "school_leader" | "system_admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +413,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["discipline_admin", "school_leader", "system_admin"],
+    },
   },
 } as const
