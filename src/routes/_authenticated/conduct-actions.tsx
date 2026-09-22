@@ -32,6 +32,7 @@ interface StudentOption {
   full_name: string;
   class_name: string;
   house: string | null;
+  parent_phone: string | null;
 }
 
 interface Offense {
@@ -82,7 +83,7 @@ function ConductActionsPage() {
     queryFn: async (): Promise<StudentOption[]> => {
       const { data, error } = await supabase
         .from("students")
-        .select("id, admission_no, full_name, class_name, house")
+        .select("id, admission_no, full_name, class_name, house, parent_phone")
         .eq("is_active", true)
         .order("full_name");
       if (error) throw error;
