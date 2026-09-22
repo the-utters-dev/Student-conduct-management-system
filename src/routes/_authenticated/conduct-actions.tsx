@@ -75,6 +75,7 @@ function ConductActionsPage() {
   const [marks, setMarks] = useState<string>("1");
   const [occurredOn, setOccurredOn] = useState(todayISO());
   const [reason, setReason] = useState("");
+  const [notifyParent, setNotifyParent] = useState(true);
 
   const studentsQuery = useQuery({
     queryKey: ["students", "active"],
