@@ -174,26 +174,79 @@ function ConductActionsPage() {
   const submit = useMutation({
     mutationFn: async () => {
       if (!studentId || !termId) throw new Error("Select a student and an active term first.");
-      const { error } = await supabase.from("conduct_logs").insert({
-        student_id: studentId,
-        term_id: termId,
-        offense_id: offenseId || null,
-        entry_type: entryType,
-        marks: markValue,
-        reason: reason.trim() || null,
-        occurred_on: occurredOn,
-        recorded_by: user?.id ?? null,
-      });
+      const { data: log, error } = await supabase
+        .from("conduct_logs")
+        .insert({
+          student_id: studentId,
+          term_id: termId,
+          offense_id: offenseId || null,
+          entry_type: entryType,
+          marks: markValue,
+          reason: reason.trim() || null,
+          occurred_on: occurredOn,
+          recorded_by: user?.id ?? null,
+        })
+        .select("id")
+        .single();
       if (error) throw error;
+
+      const offense = offensesQuery.data?.find((o) => o.id === offenseId);
+      const label = entryType === "deduction" ? "Deduction" : "Restoration";
+      const cause = offense?.title || reason.trim() || "conduct review";
+      const startingMarks = balanceQuery.data?.starting_marks ?? 40;
+      const resultingBalance = newBalance ?? currentBalance ?? startingMarks;
+
+      let smsQueued = false;
+      const phone = selectedStudent?.parent_phone ?? null;
+      if (notifyParent && phone) {
+        const messageBody = `SCDMS Update: ${selectedStudent?.full_name} received a ${label} of ${markValue} marks for '${cause}'. Current Conduct Balance: ${resultingBalance}/${startingMarks}.`;
+        const { error: notifyError } = await supabase.from("notification_logs").insert({
+          conduct_log_id: log.id,
+          student_id: studentId,
+          recipient_phone: phone,
+          message_body: messageBody,
+          status: "pending",
+        });
+        if (notifyError) {
+          console.error("Failed to queue parent SMS", notifyError);
+        } else {
+          smsQueued = true;
+        }
+      }
+
+      const { error: auditError } = await supabase.from("audit_logs").insert({
+        user_id: user?.id ?? null,
+        action: "CREATE_CONDUCT_LOG",
+        entity_type: "conduct_logs",
+        entity_id: log.id,
+        payload: {
+          student_id: studentId,
+          action_type: entryType,
+          marks_changed: entryType === "deduction" ? -markValue : markValue,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      if (auditError) console.error("Failed to write audit entry", auditError);
+
+      return { smsQueued, notifyRequested: notifyParent, hasPhone: Boolean(phone) };
     },
-    onSuccess: async () => {
-      toast.success("Conduct log recorded successfully");
+    onSuccess: async (result) => {
+      const smsLine = result.smsQueued
+        ? "SMS queued to parent"
+        : result.notifyRequested && !result.hasPhone
+          ? "No parent phone on file — SMS skipped"
+          : "SMS not sent";
+      toast.success("Conduct log recorded successfully", {
+        description: `Ledger entry saved · ${smsLine}`,
+      });
       setOffenseId("");
       setReason("");
       setMarks("1");
       setOccurredOn(todayISO());
       await queryClient.invalidateQueries({ queryKey: ["balance"] });
       await queryClient.invalidateQueries({ queryKey: ["conduct-logs"] });
+      await queryClient.invalidateQueries({ queryKey: ["notification-logs"] });
+      await queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
     },
     onError: (err: Error) => toast.error(err.message || "Couldn't save this entry."),
   });
