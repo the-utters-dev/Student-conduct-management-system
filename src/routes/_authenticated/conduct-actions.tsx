@@ -301,7 +301,7 @@ function ConductActionsPage() {
                     onClick={() => setEntryType(opt.key)}
                     className={
                       entryType === opt.key
-                        ? "rounded-xl bg-brand px-4 py-2.5 text-center text-[13px] font-semibold text-brand-foreground shadow-glow"
+                        ? "rounded-xl bg-brand px-4 py-2.5 text-center text-[13px] font-semibold text-white shadow-brand-glow"
                         : "rounded-xl px-4 py-2.5 text-center text-[13px] font-semibold text-soft transition hover:text-ink"
                     }
                   >
@@ -376,7 +376,7 @@ function ConductActionsPage() {
             <button
               type="submit"
               disabled={!canSubmit || submit.isPending}
-              className="w-full rounded-2xl bg-brand px-5 py-3.5 font-display text-sm font-bold text-brand-foreground shadow-glow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-2xl bg-brand px-5 py-3.5 font-display text-sm font-bold text-white shadow-brand-glow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submit.isPending ? "Saving…" : "Record conduct entry"}
             </button>
