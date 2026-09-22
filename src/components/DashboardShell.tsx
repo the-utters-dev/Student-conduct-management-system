@@ -58,6 +58,11 @@ interface DashboardShellProps {
 
 export function DashboardShell({ greeting, dateLine, children }: DashboardShellProps) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+  const { profile, role, isDisciplineStaff, signOut } = useAuth();
+  const navItems = NAV_ITEMS.filter((i) => !i.disciplineOnly || isDisciplineStaff);
+  const roleInfo = role ? ROLE_LABELS[role] : null;
+  const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
 
   return (
     <div className="relative min-h-screen overflow-hidden font-sans text-body antialiased">
