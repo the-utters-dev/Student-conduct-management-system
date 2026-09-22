@@ -1,13 +1,14 @@
-import { Link, LinkProps, useRouterState } from "@tanstack/react-router";
+import { Link, LinkProps, useNavigate, useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import avatar from "@/assets/avatar.png";
+import { ROLE_LABELS, useAuth } from "@/hooks/useAuth";
 
 const NAV_ITEMS = [
-  { label: "Dashboard", to: "/", letter: "D" },
-  { label: "Students", to: "/students", letter: "S" },
-  { label: "Conduct Actions", to: "/conduct-actions", letter: "A" },
-  { label: "Reports", to: "/reports", letter: "R" },
-  { label: "Audit Logs", to: "/audit-logs", letter: "L" },
+  { label: "Dashboard", to: "/", letter: "D", disciplineOnly: false },
+  { label: "Students", to: "/students", letter: "S", disciplineOnly: false },
+  { label: "Conduct Actions", to: "/conduct-actions", letter: "A", disciplineOnly: true },
+  { label: "Reports", to: "/reports", letter: "R", disciplineOnly: false },
+  { label: "Audit Logs", to: "/audit-logs", letter: "L", disciplineOnly: false },
 ] as const;
 
 function SidebarLink({
