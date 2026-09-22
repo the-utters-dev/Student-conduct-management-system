@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/DashboardShell";
 
-export const Route = createFileRoute("/conduct-actions")({
+export const Route = createFileRoute("/_authenticated/conduct-actions")({
   head: () => ({
     meta: [
       { title: "Conduct Actions — SCDMS" },

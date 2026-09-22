@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/DashboardShell";
 
-export const Route = createFileRoute("/audit-logs")({
+export const Route = createFileRoute("/_authenticated/audit-logs")({
   head: () => ({
     meta: [
       { title: "Audit Logs — SCDMS" },
