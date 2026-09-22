@@ -89,7 +89,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
               Main
             </div>
             <nav className="space-y-1">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <SidebarLink key={item.to} item={item} active={pathname === item.to} />
               ))}
             </nav>
@@ -122,16 +122,28 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
             <div className="flex items-center gap-3 rounded-2xl bg-glass-bright px-2 py-1.5 ring-1 ring-hairline">
               <img
                 src={avatar}
-                alt="Amara Adeyemi"
+                alt={displayName}
                 className="h-9 w-9 rounded-xl object-cover ring-1 ring-hairline"
               />
               <div className="leading-tight">
-                <div className="text-[13px] font-semibold text-ink">Amara Adeyemi</div>
-                <div className="text-[11px] text-soft">Discipline Lead</div>
+                <div className="text-[13px] font-semibold text-ink">{displayName}</div>
+                <div className="text-[11px] text-soft">
+                  {profile?.job_title ?? roleInfo?.label ?? "Role pending"}
+                </div>
               </div>
               <span className="rounded-lg bg-brand/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-brand ring-1 ring-brand/20">
-                Admin
+                {roleInfo?.badge ?? "Staff"}
               </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  await signOut();
+                  navigate({ to: "/auth" });
+                }}
+                className="rounded-xl px-2 py-1 text-[11px] font-semibold text-soft transition hover:text-ink"
+              >
+                Sign out
+              </button>
             </div>
           </header>
 
