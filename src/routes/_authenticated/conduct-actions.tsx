@@ -428,6 +428,28 @@ function ConductActionsPage() {
               />
             </div>
 
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-glass-bright px-4 py-3 ring-1 ring-hairline">
+              <input
+                type="checkbox"
+                checked={notifyParent}
+                onChange={(e) => setNotifyParent(e.target.checked)}
+                className="mt-0.5 size-4 accent-[var(--color-brand)]"
+              />
+              <span>
+                <span className="block text-[13px] font-semibold text-ink">
+                  Notify parent via SMS
+                </span>
+                <span className="block text-[11px] text-soft">
+                  {selectedStudent
+                    ? selectedStudent.parent_phone
+                      ? `Queues a message to ${selectedStudent.parent_phone}`
+                      : "No parent phone on file for this student"
+                    : "Queues a message to the parent number on file"}
+                </span>
+              </span>
+            </label>
+
+
             <button
               type="submit"
               disabled={!canSubmit || submit.isPending}
