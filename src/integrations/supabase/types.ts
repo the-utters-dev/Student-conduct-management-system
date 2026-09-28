@@ -371,6 +371,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_audit_viewer: { Args: { _user_id: string }; Returns: boolean }
       is_discipline_staff: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
