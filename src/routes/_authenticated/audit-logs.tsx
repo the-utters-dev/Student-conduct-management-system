@@ -111,7 +111,7 @@ function AuditViewer() {
       if (!s) return true;
       const st = l.user_id ? q.data?.staff.get(l.user_id) : undefined;
       const p = payloadObj(l.payload);
-      return [st?.full_name, st?.email, l.action, String(p.student_id ?? ""), l.entity_id]
+      return [st?.full_name, st?.email, l.action, String(p["student_id"] ?? ""), l.entity_id]
         .some((v) => v?.toLowerCase().includes(s));
     });
   }, [q.data, search, filter, from, to]);
@@ -120,7 +120,7 @@ function AuditViewer() {
   const input = "rounded-xl border border-glass-line bg-glass-bright px-3 py-2 text-sm text-ink outline-none";
   const sel = selected ? staffOf(selected.user_id) : undefined;
   const selPayload = payloadObj(selected?.payload ?? null);
-  const session = payloadObj((selPayload.session as Json) ?? null);
+  const session = payloadObj((selPayload["session"] as Json) ?? null);
 
   return (
     <div className="rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
@@ -189,9 +189,9 @@ function AuditViewer() {
                 <Field k="Recorded" v={new Date(selected.created_at).toLocaleString("en-GB")} />
               </Section>
               <Section title="IP / session metadata">
-                <Field k="IP address" v={String(selPayload.ip ?? "Not captured")} />
-                <Field k="Device" v={String(session.user_agent ?? "Not captured")} />
-                <Field k="Timezone" v={String(session.timezone ?? "Not captured")} />
+                <Field k="IP address" v={String(selPayload["ip"] ?? "Not captured")} />
+                <Field k="Device" v={String(session["user_agent"] ?? "Not captured")} />
+                <Field k="Timezone" v={String(session["timezone"] ?? "Not captured")} />
               </Section>
               <Section title="Raw payload">
                 <pre className="overflow-x-auto rounded-xl bg-glass-soft p-3 font-mono text-xs text-ink">
