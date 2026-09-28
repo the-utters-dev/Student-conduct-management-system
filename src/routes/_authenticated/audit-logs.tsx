@@ -104,7 +104,7 @@ function AuditViewer() {
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
     return (q.data?.logs ?? []).filter((l) => {
-      if (!FILTERS[filter].match(l.action)) return false;
+      if (!FILTERS[filter]?.match(l.action)) return false;
       const day = l.created_at.slice(0, 10);
       if (from && day < from) return false;
       if (to && day > to) return false;
