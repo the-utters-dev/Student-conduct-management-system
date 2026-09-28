@@ -224,6 +224,10 @@ function ConductActionsPage() {
           action_type: entryType,
           marks_changed: entryType === "deduction" ? -markValue : markValue,
           timestamp: new Date().toISOString(),
+          session: {
+            user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          },
         },
       });
       if (auditError) console.error("Failed to write audit entry", auditError);
