@@ -176,7 +176,7 @@ function ReportsPage() {
         <button
           onClick={exportCsv}
           disabled={!balances.length}
-          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-brand-glow disabled:opacity-50"
+          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-brand shadow-brand-glow disabled:opacity-50"
         >
           Export Report (CSV)
         </button>
@@ -248,7 +248,7 @@ function ReportsPage() {
                 <td className="text-soft">{b.admission_no}</td>
                 <td className="text-soft">{b.class_name}</td>
                 <td>
-                  <span className="rounded-full bg-danger px-2.5 py-1 text-xs font-bold text-primary-foreground">
+                  <span className="rounded-full bg-danger px-2.5 py-1 text-xs font-bold text-on-brand">
                     {b.current_marks}/{b.starting_marks ?? 40}
                   </span>
                 </td>
