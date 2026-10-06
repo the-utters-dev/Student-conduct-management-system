@@ -373,6 +373,7 @@ export type Database = {
       }
       is_audit_viewer: { Args: { _user_id: string }; Returns: boolean }
       is_discipline_staff: { Args: { _user_id: string }; Returns: boolean }
+      is_staff: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "discipline_admin" | "school_leader" | "system_admin"
