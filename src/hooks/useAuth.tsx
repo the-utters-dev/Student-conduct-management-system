@@ -16,6 +16,7 @@ export interface StaffProfile {
   full_name: string;
   email: string | null;
   job_title: string | null;
+  avatar_url: string | null;
 }
 
 interface AuthState {
@@ -52,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [{ data: profileRow }, { data: roleRows }] = await Promise.all([
       supabase
         .from("profiles")
-        .select("id, full_name, email, job_title")
+        .select("id, full_name, email, job_title, avatar_url")
         .eq("id", userId)
         .maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", userId),
