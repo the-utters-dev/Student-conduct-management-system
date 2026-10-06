@@ -2,6 +2,7 @@ import { Link, LinkProps, useNavigate, useRouterState } from "@tanstack/react-ro
 import type { ReactNode } from "react";
 import avatar from "@/assets/avatar.png";
 import { ROLE_LABELS, useAuth } from "@/hooks/useAuth";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/", letter: "D", disciplineOnly: false },
@@ -9,6 +10,7 @@ const NAV_ITEMS = [
   { label: "Conduct Actions", to: "/conduct-actions", letter: "A", disciplineOnly: true },
   { label: "Reports", to: "/reports", letter: "R", disciplineOnly: false },
   { label: "Audit Logs", to: "/audit-logs", letter: "L", disciplineOnly: false },
+  { label: "Settings", to: "/settings", letter: "⚙", disciplineOnly: false },
 ] as const;
 
 function SidebarLink({
@@ -62,6 +64,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const { profile, role, isDisciplineStaff, signOut } = useAuth();
   const navItems = NAV_ITEMS.filter((i) => !i.disciplineOnly || isDisciplineStaff);
   const roleInfo = role ? ROLE_LABELS[role] : null;
+  const { data: school } = useSchoolSettings();
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
 
   return (
@@ -74,9 +77,13 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
       <div className="relative mx-auto flex min-h-screen max-w-[1440px] gap-6 p-6">
         <aside className="w-64 shrink-0 rounded-3xl border border-glass-line bg-glass shadow-panel-lg backdrop-blur-2xl">
           <div className="flex items-center gap-3 px-6 py-6">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-linear-to-br from-brand to-accent text-white shadow-brand-glow">
-              <span className="font-display text-lg font-bold">S</span>
-            </div>
+            {school?.logo_url ? (
+              <img src={school.logo_url} alt="School logo" className="h-11 w-11 rounded-2xl object-cover ring-1 ring-hairline" />
+            ) : (
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-linear-to-br from-brand to-accent text-on-brand shadow-brand-glow">
+                <span className="font-display text-lg font-bold">S</span>
+              </div>
+            )}
             <div className="leading-tight">
               <div className="font-display text-[15px] font-bold text-ink">SCDMS</div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-faint">
@@ -121,7 +128,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
             </div>
             <div className="flex items-center gap-3 rounded-2xl bg-glass-bright px-2 py-1.5 ring-1 ring-hairline">
               <img
-                src={avatar}
+                src={profile?.avatar_url || avatar}
                 alt={displayName}
                 className="h-9 w-9 rounded-xl object-cover ring-1 ring-hairline"
               />

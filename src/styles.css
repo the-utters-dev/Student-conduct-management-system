@@ -114,3 +114,49 @@
     transform: translate3d(-3%, 4%, 0);
   }
 }
+
+/* shadcn base tokens mapped onto the glass system */
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #1e1b4b;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #1e1b4b;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-border: rgba(15, 23, 42, 0.1);
+  --color-input: rgba(15, 23, 42, 0.15);
+  --color-ring: #4f46e5;
+  --color-primary: #4f46e5;
+  --color-primary-foreground: #ffffff;
+  --color-accent-foreground: #1e1b4b;
+  --color-destructive: #ef4444;
+}
+
+:root { --color-primary: var(--color-brand); --color-ring: var(--color-brand); }
+
+/* Dark mode */
+.dark {
+  --color-ink: #eef2ff;
+  --color-body: #cbd5e1;
+  --color-soft: #94a3b8;
+  --color-faint: #64748b;
+  --color-glass: rgba(15, 23, 42, 0.55);
+  --color-glass-soft: rgba(30, 41, 59, 0.45);
+  --color-glass-bright: rgba(51, 65, 85, 0.55);
+  --color-glass-line: rgba(148, 163, 184, 0.16);
+  --color-hairline: rgba(148, 163, 184, 0.12);
+  --color-track: rgba(71, 85, 105, 0.6);
+  --color-background: #0f172a;
+  --color-foreground: #eef2ff;
+  --color-popover: #0f172a;
+  --color-popover-foreground: #eef2ff;
+  --color-muted: #1e293b;
+  --color-muted-foreground: #94a3b8;
+  --color-border: rgba(148, 163, 184, 0.2);
+  --color-input: rgba(148, 163, 184, 0.25);
+  --color-accent-foreground: #eef2ff;
+  color-scheme: dark;
+}
+.dark body { background-color: #020617; }
+.dark .app-canvas { background: linear-gradient(135deg, #020617 0%, #0b1033 50%, #071a2b 100%); }
+.dark .bloom { opacity: 0.35; }

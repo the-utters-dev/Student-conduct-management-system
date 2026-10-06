@@ -254,6 +254,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           created_at: string
           email: string | null
           full_name: string
@@ -262,6 +263,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          avatar_url?: string | null
           created_at?: string
           email?: string | null
           full_name?: string
@@ -270,6 +272,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          avatar_url?: string | null
           created_at?: string
           email?: string | null
           full_name?: string
@@ -279,44 +282,101 @@ export type Database = {
         }
         Relationships: []
       }
+      school_settings: {
+        Row: {
+          academic_year: string
+          critical_threshold: number
+          id: number
+          logo_url: string | null
+          notify_on_threshold: boolean
+          school_name: string
+          updated_at: string
+          warning_threshold: number
+        }
+        Insert: {
+          academic_year?: string
+          critical_threshold?: number
+          id?: number
+          logo_url?: string | null
+          notify_on_threshold?: boolean
+          school_name?: string
+          updated_at?: string
+          warning_threshold?: number
+        }
+        Update: {
+          academic_year?: string
+          critical_threshold?: number
+          id?: number
+          logo_url?: string | null
+          notify_on_threshold?: boolean
+          school_name?: string
+          updated_at?: string
+          warning_threshold?: number
+        }
+        Relationships: []
+      }
       students: {
         Row: {
           admission_no: string
+          cell: string | null
+          class_level: string | null
           class_name: string
           created_at: string
+          date_of_birth: string | null
+          district: string | null
+          first_name: string | null
           full_name: string
           gender: string | null
           house: string | null
           id: string
           is_active: boolean
+          last_name: string | null
           parent_name: string | null
           parent_phone: string | null
+          sector: string | null
+          stream: string | null
           updated_at: string
         }
         Insert: {
           admission_no: string
+          cell?: string | null
+          class_level?: string | null
           class_name: string
           created_at?: string
+          date_of_birth?: string | null
+          district?: string | null
+          first_name?: string | null
           full_name: string
           gender?: string | null
           house?: string | null
           id?: string
           is_active?: boolean
+          last_name?: string | null
           parent_name?: string | null
           parent_phone?: string | null
+          sector?: string | null
+          stream?: string | null
           updated_at?: string
         }
         Update: {
           admission_no?: string
+          cell?: string | null
+          class_level?: string | null
           class_name?: string
           created_at?: string
+          date_of_birth?: string | null
+          district?: string | null
+          first_name?: string | null
           full_name?: string
           gender?: string | null
           house?: string | null
           id?: string
           is_active?: boolean
+          last_name?: string | null
           parent_name?: string | null
           parent_phone?: string | null
+          sector?: string | null
+          stream?: string | null
           updated_at?: string
         }
         Relationships: []
