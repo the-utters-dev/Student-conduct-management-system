@@ -48,14 +48,14 @@ export function PromotionDialog({
       const hasStatus = eligible.some((s) => "status" in s);
       const updated = eligible.map((s) => {
         const lvl = levelOf(s)!;
-        const row: Record<string, unknown> = { ...s };
+        const row: StudentRow = { ...s };
         if (repeating.has(s.id)) {
           if (hasStatus) row.status = "repeating";
         } else if (lvl === "S6") {
           row.is_active = false;
           if (hasStatus) row.status = "graduated";
         } else {
-          const nl = NEXT[lvl];
+          const nl = NEXT[lvl] ?? lvl;
           row.class_level = nl;
           row.class_name = s.class_name.replace(/\bS[1-6]\b/i, nl);
           if (hasStatus) row.status = "active";
