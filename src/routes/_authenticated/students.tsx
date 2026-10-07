@@ -7,6 +7,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { CLASS_LEVELS, RWANDA_DISTRICTS, RWANDA_SECTORS, STREAMS } from "@/lib/rwanda";
+import { PromotionDialog } from "@/components/PromotionDialog";
+import {
+  STATUS_LABELS,
+  isMissingColumn,
+  levelOf,
+  normalizeRwPhone,
+  rwCarrier,
+  statusOf,
+  streamOf,
+  type StudentRow,
+} from "@/lib/students";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -40,25 +51,7 @@ export const Route = createFileRoute("/_authenticated/students")({
   component: StudentsPage,
 });
 
-interface StudentRow {
-  id: string;
-  admission_no: string;
-  full_name: string;
-  first_name: string | null;
-  last_name: string | null;
-  class_name: string;
-  class_level: string | null;
-  stream: string | null;
-  house: string | null;
-  gender: string | null;
-  date_of_birth: string | null;
-  district: string | null;
-  sector: string | null;
-  cell: string | null;
-  parent_name: string | null;
-  parent_phone: string | null;
-  is_active: boolean;
-}
+const PAGE_SIZE = 25;
 
 function initials(name: string) {
   return name
@@ -69,34 +62,36 @@ function initials(name: string) {
     .join("");
 }
 
-// Fall back to parsing class_name ("S4 B", "S4 MEG B") for older records.
-function levelOf(s: StudentRow) {
-  return s.class_level ?? s.class_name.match(/\bS[1-6]\b/i)?.[0]?.toUpperCase() ?? null;
-}
-function streamOf(s: StudentRow) {
-  return s.stream ?? s.class_name.trim().split(/\s+/).pop()?.match(/^[A-F]$/i)?.[0]?.toUpperCase() ?? null;
-}
-
 function StudentsPage() {
-  const { role } = useAuth();
+  const { role, isDisciplineStaff } = useAuth();
   const { data: school } = useSchoolSettings();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [level, setLevel] = useState("");
   const [stream, setStream] = useState("");
+  const [statusFilter, setStatusFilter] = useState("current");
+  const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
+  const [promoting, setPromoting] = useState(false);
   const [toDelete, setToDelete] = useState<StudentRow | null>(null);
   const canDelete = role !== null;
 
   const { data, isPending, error } = useQuery({
     queryKey: ["students"],
     queryFn: async (): Promise<StudentRow[]> => {
-      const { data: rows, error: queryError } = await supabase
-        .from("students")
-        .select("*")
-        .order("full_name", { ascending: true });
-      if (queryError) throw queryError;
-      return (rows ?? []) as StudentRow[];
+      // Fetch in 1000-row batches so large schools aren't truncated.
+      const all: StudentRow[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data: rows, error: queryError } = await supabase
+          .from("students")
+          .select("*")
+          .order("full_name", { ascending: true })
+          .range(from, from + 999);
+        if (queryError) throw queryError;
+        all.push(...((rows ?? []) as StudentRow[]));
+        if (!rows || rows.length < 1000) break;
+      }
+      return all;
     },
   });
 
@@ -119,15 +114,23 @@ function StudentsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, "").replace(/^(250|0)/, "");
     return (data ?? []).filter((s) => {
       if (level && levelOf(s) !== level) return false;
       if (stream && streamOf(s) !== stream) return false;
+      const st = statusOf(s);
+      if (statusFilter === "current" ? st !== "active" && st !== "repeating" : statusFilter && st !== statusFilter) return false;
       if (!q) return true;
-      return [s.full_name, s.admission_no, s.class_name, s.house ?? "", s.district ?? ""].some((v) =>
-        v.toLowerCase().includes(q),
+      if (qDigits.length >= 3 && (s.parent_phone ?? "").replace(/\D/g, "").includes(qDigits)) return true;
+      return [s.full_name, s.admission_no, s.class_name, s.parent_name, s.father_name, s.mother_name, s.guardian_email].some(
+        (v) => (v ?? "").toLowerCase().includes(q),
       );
     });
-  }, [data, search, level, stream]);
+  }, [data, search, level, stream, statusFilter]);
+
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pages);
+  const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const selectCls =
     "rounded-2xl bg-glass-bright px-3 py-2 text-sm text-body ring-1 ring-hairline outline-none";
@@ -152,19 +155,34 @@ function StudentsPage() {
               <span className="text-sm text-faint">⌕</span>
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-48 bg-transparent text-sm text-body outline-none placeholder:text-faint"
-                placeholder="Name, admission no, district"
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                className="w-56 bg-transparent text-sm text-body outline-none placeholder:text-faint"
+                placeholder="Student, parent name or phone"
               />
             </div>
-            <select aria-label="Filter by level" value={level} onChange={(e) => setLevel(e.target.value)} className={selectCls}>
+            <select aria-label="Filter by level" value={level} onChange={(e) => { setLevel(e.target.value); setPage(1); }} className={selectCls}>
               <option value="">All levels</option>
               {CLASS_LEVELS.map((l) => <option key={l}>{l}</option>)}
             </select>
-            <select aria-label="Filter by stream" value={stream} onChange={(e) => setStream(e.target.value)} className={selectCls}>
+            <select aria-label="Filter by stream" value={stream} onChange={(e) => { setStream(e.target.value); setPage(1); }} className={selectCls}>
               <option value="">All streams</option>
-              {STREAMS.map((l) => <option key={l}>{l}</option>)}
+              {STREAMS.filter((s) => s !== "F").map((l) => <option key={l}>{l}</option>)}
             </select>
+            <select aria-label="Filter by status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className={selectCls}>
+              <option value="current">Active & repeating</option>
+              <option value="active">Active</option>
+              <option value="repeating">Repeating</option>
+              <option value="graduated">Graduated / Alumni</option>
+              <option value="">All statuses</option>
+            </select>
+            {role && (
+              <button
+                onClick={() => setPromoting(true)}
+                className="rounded-2xl bg-glass-bright px-4 py-2 text-sm font-semibold text-ink ring-1 ring-hairline"
+              >
+                Academic Progression
+              </button>
+            )}
             {role && (
               <button
                 onClick={() => setAdding(true)}
@@ -216,7 +234,10 @@ function StudentsPage() {
                 </tr>
               )}
 
-              {filtered.map((s) => (
+              {pageRows.map((s) => {
+                const st = statusOf(s);
+                const parents = [s.father_name, s.mother_name].filter(Boolean).join(" & ") || s.parent_name;
+                return (
                 <tr key={s.id} className="border-t border-hairline transition hover:bg-glass-bright">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -228,7 +249,7 @@ function StudentsPage() {
                         <div className="text-[11px] text-soft">
                           {[s.gender, s.date_of_birth && new Date(s.date_of_birth).toLocaleDateString("en-GB")]
                             .filter(Boolean)
-                            .join(" · ") || s.parent_name || "—"}
+                            .join(" · ") || "—"}
                         </div>
                       </div>
                     </div>
@@ -238,16 +259,20 @@ function StudentsPage() {
                   <td className="px-4 py-3 text-[12px] text-body">
                     {[s.cell, s.sector, s.district].filter(Boolean).join(", ") || "—"}
                   </td>
-                  <td className="px-4 py-3 text-[12px] text-body">{s.parent_phone ?? "—"}</td>
+                  <td className="px-4 py-3 text-[12px] text-body">
+                    <div>{parents ?? "—"}</div>
+                    <div className="text-[11px] text-soft">
+                      {s.parent_phone ?? "No phone"}
+                      {s.notification_channel && ` · ${s.notification_channel === "both" ? "SMS + Email" : s.notification_channel.toUpperCase()}`}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <span
-                      className={
-                        s.is_active
-                          ? "rounded-lg bg-ok/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-ok"
-                          : "rounded-lg bg-danger/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-danger"
-                      }
+                      className={`rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${
+                        st === "active" ? "bg-ok/15 text-ok" : st === "graduated" ? "bg-brand/15 text-brand" : "bg-danger/15 text-danger"
+                      }`}
                     >
-                      {s.is_active ? "Active" : "Inactive"}
+                      {st === "inactive" ? "Inactive" : STATUS_LABELS[st]}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -262,13 +287,34 @@ function StudentsPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
+
+        {filtered.length > PAGE_SIZE && (
+          <div className="mt-4 flex items-center justify-between text-[12px] text-soft">
+            <span>
+              Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button disabled={safePage === 1} onClick={() => setPage(safePage - 1)} className="rounded-lg px-3 py-1.5 font-semibold ring-1 ring-hairline disabled:opacity-40">← Prev</button>
+              <span className="font-semibold text-ink">Page {safePage} / {pages}</span>
+              <button disabled={safePage === pages} onClick={() => setPage(safePage + 1)} className="rounded-lg px-3 py-1.5 font-semibold ring-1 ring-hairline disabled:opacity-40">Next →</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      <AddStudentDialog open={adding} onOpenChange={setAdding} />
+      <AddStudentDialog open={adding} onOpenChange={setAdding} academicYear={school?.academic_year ?? "2026/2027"} />
+      <PromotionDialog
+        open={promoting}
+        onOpenChange={setPromoting}
+        students={data ?? []}
+        academicYear={school?.academic_year ?? "2026/2027"}
+        canPromote={isDisciplineStaff}
+      />
 
       <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
         <AlertDialogContent>
@@ -310,6 +356,11 @@ const EMPTY = {
   combination: "",
   parent_name: "",
   parent_phone: "",
+  father_name: "",
+  mother_name: "",
+  guardian_email: "",
+  notification_channel: "sms",
+  primary_contact: "guardian",
 };
 type Form = typeof EMPTY;
 
@@ -329,12 +380,22 @@ function validate(f: Form) {
   if (!f.cell.trim()) e.cell = "Cell is required.";
   if (!f.class_level) e.class_level = "Select a level.";
   if (!f.stream) e.stream = "Select a stream.";
-  if (f.parent_phone && !/^\+?\d[\d\s-]{8,14}$/.test(f.parent_phone.trim()))
-    e.parent_phone = "Enter a valid phone number, e.g. +250 788 123 456.";
+  if (f.father_name.length > 100) e.father_name = "Keep under 100 characters.";
+  if (f.mother_name.length > 100) e.mother_name = "Keep under 100 characters.";
+  if (!f.parent_phone.trim()) {
+    if (f.notification_channel !== "email") e.parent_phone = "A phone number is needed for SMS alerts.";
+  } else if (!normalizeRwPhone(f.parent_phone))
+    e.parent_phone = "Enter an MTN (078/079) or Airtel (072/073) number, e.g. 788 123 456.";
+  if (f.guardian_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.guardian_email.trim()))
+    e.guardian_email = "Enter a valid email address.";
+  else if (!f.guardian_email.trim() && f.notification_channel !== "sms")
+    e.guardian_email = "An email is needed for email alerts.";
+  const designated = { father: f.father_name, mother: f.mother_name, guardian: f.parent_name }[f.primary_contact as "father"];
+  if (!designated?.trim()) e.primary_contact = "Enter the name of the designated parent above.";
   return e;
 }
 
-function AddStudentDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+function AddStudentDialog({ open, onOpenChange, academicYear }: { open: boolean; onOpenChange: (o: boolean) => void; academicYear: string }) {
   const qc = useQueryClient();
   const [f, setF] = useState<Form>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
@@ -345,7 +406,7 @@ function AddStudentDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   const save = useMutation({
     mutationFn: async () => {
       const className = [f.class_level, f.combination.trim().toUpperCase(), f.stream].filter(Boolean).join(" ");
-      const { error } = await supabase.from("students").insert({
+      const base = {
         first_name: f.first_name.trim(),
         last_name: f.last_name.trim(),
         full_name: `${f.first_name.trim()} ${f.last_name.trim()}`,
@@ -359,8 +420,23 @@ function AddStudentDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
         stream: f.stream,
         class_name: className,
         parent_name: f.parent_name.trim() || null,
-        parent_phone: f.parent_phone.trim() || null,
-      });
+        parent_phone: normalizeRwPhone(f.parent_phone),
+      };
+      const extended = {
+        ...base,
+        father_name: f.father_name.trim() || null,
+        mother_name: f.mother_name.trim() || null,
+        guardian_email: f.guardian_email.trim() || null,
+        notification_channel: f.notification_channel,
+        primary_contact: f.primary_contact,
+        status: "active",
+        academic_year: academicYear,
+      };
+      let { error } = await supabase.from("students").insert(extended as never);
+      if (isMissingColumn(error)) {
+        ({ error } = await supabase.from("students").insert(base));
+        if (!error) toast.warning("Saved without guardian details — the database update for these fields hasn't been applied yet.");
+      }
       if (error) {
         if (error.code === "23505") throw new Error("A student with this code already exists.");
         throw error;
@@ -439,8 +515,35 @@ function AddStudentDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
           <div className="self-end pb-2 text-xs text-soft">
             Class: <span className="font-semibold text-ink">{[f.class_level, f.combination.toUpperCase(), f.stream].filter(Boolean).join(" ") || "—"}</span>
           </div>
-          {field("parent_name", "Parent / guardian name (optional)", <input className={inp} value={f.parent_name} onChange={(e) => set("parent_name", e.target.value)} />)}
-          {field("parent_phone", "Parent phone (optional)", <input className={inp} placeholder="+250 788 123 456" value={f.parent_phone} onChange={(e) => set("parent_phone", e.target.value)} />)}
+          <div className="border-t border-hairline pt-3 text-xs font-bold uppercase tracking-[0.12em] text-faint sm:col-span-2">Parents & guardian</div>
+          {field("father_name", "Father name", <input className={inp} value={f.father_name} onChange={(e) => set("father_name", e.target.value)} />)}
+          {field("mother_name", "Mother name", <input className={inp} value={f.mother_name} onChange={(e) => set("mother_name", e.target.value)} />)}
+          {field("parent_name", "Guardian name (optional)", <input className={inp} value={f.parent_name} onChange={(e) => set("parent_name", e.target.value)} />)}
+          {field("parent_phone", "Primary guardian phone", (
+            <div className="flex items-center rounded-xl border border-input bg-background focus-within:ring-2 focus-within:ring-brand/40">
+              <span className="border-r border-input px-3 text-sm font-semibold text-soft">+250</span>
+              <input
+                className="w-full bg-transparent px-3 py-2 text-sm text-ink outline-none"
+                placeholder="788 123 456"
+                inputMode="tel"
+                value={f.parent_phone}
+                onChange={(e) => set("parent_phone", e.target.value)}
+                onBlur={() => { const n = normalizeRwPhone(f.parent_phone); if (n) set("parent_phone", n.replace("+250 ", "")); }}
+              />
+              {rwCarrier(f.parent_phone) && <span className="px-3 text-[10px] font-bold uppercase text-ok">{rwCarrier(f.parent_phone)}</span>}
+            </div>
+          ))}
+          {field("guardian_email", "Guardian email (optional)", <input type="email" className={inp} placeholder="parent@example.com" value={f.guardian_email} onChange={(e) => set("guardian_email", e.target.value)} />)}
+          {field("notification_channel", "Preferred notification channel", (
+            <select className={inp} value={f.notification_channel} onChange={(e) => set("notification_channel", e.target.value)}>
+              <option value="sms">SMS (MTN/Airtel)</option><option value="email">Email</option><option value="both">Both</option>
+            </select>
+          ))}
+          {field("primary_contact", "Primary designated parent (receives alerts)", (
+            <select className={inp} value={f.primary_contact} onChange={(e) => set("primary_contact", e.target.value)}>
+              <option value="father">Father</option><option value="mother">Mother</option><option value="guardian">Guardian</option>
+            </select>
+          ))}
           <div className="flex justify-end gap-2 sm:col-span-2">
             <button type="button" onClick={() => onOpenChange(false)} className="rounded-xl px-4 py-2 text-sm font-semibold text-soft ring-1 ring-hairline">Cancel</button>
             <button type="submit" disabled={save.isPending} className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand shadow-brand-glow disabled:opacity-60">
