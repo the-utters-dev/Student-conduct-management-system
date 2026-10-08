@@ -73,7 +73,10 @@ function ProfileTab() {
     setBusy(true);
     const { error } = await supabase.from("profiles").update(patch as never).eq("id", profile.id);
     setBusy(false);
-    if (error) return toast.error(error.message);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
     toast.success("Profile updated");
     await refresh();
   }
@@ -118,7 +121,10 @@ function ProfileTab() {
           className="mt-5 space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!name.trim()) return toast.error("Full name is required.");
+            if (!name.trim()) {
+              toast.error("Full name is required.");
+              return;
+            }
             void updateProfile({ full_name: name.trim(), job_title: title.trim() || null });
           }}
         >
