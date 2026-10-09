@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { CLASS_LEVELS, RWANDA_DISTRICTS, RWANDA_SECTORS, STREAMS } from "@/lib/rwanda";
 import { PromotionDialog } from "@/components/PromotionDialog";
+import { AcademicProgressionModal } from "@/components/AcademicProgressionModal";
 import {
   STATUS_LABELS,
   isMissingColumn,
@@ -73,6 +74,8 @@ function StudentsPage() {
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [rollingOver, setRollingOver] = useState(false);
+  const canRollover = role === "school_leader" || role === "system_admin";
   const [toDelete, setToDelete] = useState<StudentRow | null>(null);
   const canDelete = role !== null;
 
@@ -181,6 +184,14 @@ function StudentsPage() {
                 className="rounded-2xl bg-glass-bright px-4 py-2 text-sm font-semibold text-ink ring-1 ring-hairline"
               >
                 Academic Progression
+              </button>
+            )}
+            {canRollover && (
+              <button
+                onClick={() => setRollingOver(true)}
+                className="rounded-2xl bg-glass-bright px-4 py-2 text-sm font-semibold text-ink ring-1 ring-hairline"
+              >
+                Year-end Rollover
               </button>
             )}
             {role && (
@@ -315,6 +326,14 @@ function StudentsPage() {
         academicYear={school?.academic_year ?? "2026/2027"}
         canPromote={isDisciplineStaff}
       />
+      {canRollover && (
+        <AcademicProgressionModal
+          open={rollingOver}
+          onOpenChange={setRollingOver}
+          students={data ?? []}
+          academicYear={school?.academic_year ?? "2026/2027"}
+        />
+      )}
 
       <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
         <AlertDialogContent>
