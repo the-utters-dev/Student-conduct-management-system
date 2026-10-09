@@ -19,7 +19,7 @@ export function nextPlacement(s: StudentRow, action: Action) {
 function yearOptions(current: string) {
   const out: string[] = [];
   let y = current;
-  for (let i = 0; i < 2; i++) { const m = y.match(/^(\d{4})\/(\d{4})$/); if (!m) break; y = `${+m[1] - 1}/${+m[2] - 1}`; }
+  for (let i = 0; i < 2; i++) { const m = y.match(/^(\d{4})\/(\d{4})$/); if (!m) break; y = `${Number(m[1]) - 1}/${Number(m[2]) - 1}`; }
   for (let i = 0; i < 5; i++) { out.push(y); y = nextAcademicYear(y); }
   return out.length ? out : [current];
 }
