@@ -93,53 +93,77 @@ function Dashboard() {
         <div className="col-span-3 rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
           <div className="flex items-center justify-between">
             <div className="font-display text-[15px] font-bold text-ink">
-              Recent conduct actions
+              Students at risk
             </div>
             <Link
-              to="/conduct-actions"
+              to="/reports"
               className="text-[12px] font-semibold text-brand hover:underline"
             >
-              View all
+              View report
             </Link>
           </div>
           <div className="mt-4 space-y-3">
-            {RECENT_ACTIONS.map((row) => (
+            {atRisk.slice(0, 6).map((row) => (
               <div
-                key={row.student}
+                key={row.student_id}
                 className="flex items-center gap-4 rounded-2xl bg-glass-bright px-4 py-3 ring-1 ring-hairline"
               >
                 <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-glass-bright text-[12px] font-bold text-ink ring-1 ring-hairline">
-                  {row.initials}
+                  {(row.full_name ?? "?")
+                    .split(" ")
+                    .map((p) => p[0])
+                    .slice(0, 2)
+                    .join("")}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-ink">{row.student}</div>
-                  <div className="truncate text-[12px] text-soft">{row.detail}</div>
+                  <div className="text-[13px] font-semibold text-ink">
+                    {row.full_name} · {row.class_name ?? "—"}
+                  </div>
+                  <div className="truncate text-[12px] text-soft">
+                    {row.admission_no} · {row.entries_count ?? 0} entries this term
+                  </div>
                 </div>
+                <span className="shrink-0 font-display text-sm font-bold text-ink">
+                  {row.current_marks}/{row.starting_marks ?? 40}
+                </span>
                 <span
-                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${row.badgeClass}`}
+                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${STANDING_CLASS[row.standing]}`}
                 >
-                  {row.badge}
+                  {STANDING_LABEL[row.standing]}
                 </span>
               </div>
             ))}
+            {!isPending && !atRisk.length && (
+              <div className="rounded-2xl bg-glass-bright px-4 py-6 text-center text-[13px] text-soft ring-1 ring-hairline">
+                No students are below the warning threshold — great standing this term.
+              </div>
+            )}
           </div>
         </div>
 
         <div className="col-span-2 rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
           <div className="font-display text-[15px] font-bold text-ink">
-            Incidents by category
+            Standing overview
           </div>
           <div className="mt-4 space-y-3">
-            {CATEGORY_BREAKDOWN.map((cat) => (
+            {(
+              [
+                { label: "Good standing", count: goodCount, barClass: "bg-ok" },
+                { label: "Warning", count: warningCount, barClass: "bg-warn" },
+                { label: "Critical", count: criticalCount, barClass: "bg-danger" },
+              ] as const
+            ).map((cat) => (
               <div key={cat.label}>
                 <div className="flex justify-between text-[12px] text-body">
                   <span>{cat.label}</span>
-                  <span className="font-semibold">{cat.pct}%</span>
+                  <span className="font-semibold">{cat.count}</span>
                 </div>
                 <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-track">
                   <div
                     className={`h-full rounded-full ${cat.barClass}`}
-                    style={{ width: `${cat.pct}%` }}
+                    style={{
+                      width: `${totalStudents ? Math.round((cat.count / totalStudents) * 100) : 0}%`,
+                    }}
                   ></div>
                 </div>
               </div>
@@ -149,9 +173,11 @@ function Dashboard() {
             <div className="text-[12px] font-semibold uppercase tracking-[0.1em] opacity-80">
               This term
             </div>
-            <div className="mt-1 font-display text-2xl font-bold">-14% repeat cases</div>
+            <div className="mt-1 font-display text-2xl font-bold">
+              {isPending ? "…" : `${atRisk.length} open case${atRisk.length === 1 ? "" : "s"}`}
+            </div>
             <div className="mt-1 text-[11px] opacity-80">
-              Restorative actions trending down
+              Students at or below the warning threshold
             </div>
           </div>
         </div>
