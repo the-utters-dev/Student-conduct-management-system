@@ -276,6 +276,48 @@ function ReportsPage() {
         </table>
       </div>
 
+      <div className={`${panel} mt-6 overflow-x-auto`}>
+        <h3 className="font-display text-lg font-bold text-ink">Conduct &amp; discipline breakdown</h3>
+        <p className="text-sm text-soft">
+          Every active student's deductions, restorations, warnings, and current standing this term.
+        </p>
+        <table className="mt-4 w-full min-w-[820px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-wide text-faint">
+            <tr>
+              <th className="py-2">Student name</th><th>Class</th><th>Marks deducted</th>
+              <th>Marks restored</th><th>Warnings</th><th>Current balance</th><th>Standing</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...balances]
+              .sort((a, b) => (a.current_marks ?? 0) - (b.current_marks ?? 0))
+              .map((b) => {
+                const standing = standingOf(b.current_marks ?? 0, criticalThreshold, warningThreshold);
+                return (
+                  <tr key={b.student_id} className="border-t border-hairline">
+                    <td className="py-3 font-semibold text-ink">{b.full_name}</td>
+                    <td className="text-soft">{b.class_name ?? "—"}</td>
+                    <td className="text-danger">−{b.marks_deducted ?? 0}</td>
+                    <td className="text-ok">+{b.marks_restored ?? 0}</td>
+                    <td className="text-ink">{offensesByStudent.get(b.student_id ?? "") ?? 0}</td>
+                    <td className="font-semibold text-ink">
+                      {b.current_marks}/{b.starting_marks ?? 40}
+                    </td>
+                    <td>
+                      <span className={`rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${STANDING_CLASS[standing]}`}>
+                        {STANDING_LABEL[standing]}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            {!loading && !balances.length && (
+              <tr><td colSpan={7} className="py-6 text-center text-soft">No student records found.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
       <Dialog open={!!historyFor} onOpenChange={(o) => !o && setHistoryFor(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
