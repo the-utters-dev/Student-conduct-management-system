@@ -15,6 +15,8 @@ import {
 import { DashboardShell } from "@/components/DashboardShell";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { STANDING_CLASS, STANDING_LABEL, standingOf } from "@/hooks/useConductStandings";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   head: () => ({
@@ -70,6 +72,9 @@ function csvCell(v: unknown) {
 
 function ReportsPage() {
   const [historyFor, setHistoryFor] = useState<Balance | null>(null);
+  const { data: school } = useSchoolSettings();
+  const criticalThreshold = school?.critical_threshold ?? 20;
+  const warningThreshold = school?.warning_threshold ?? 30;
 
   const balancesQ = useQuery({
     queryKey: ["student-balances"],
@@ -266,6 +271,48 @@ function ReportsPage() {
             ))}
             {!loading && !stats.critical.length && (
               <tr><td colSpan={7} className="py-6 text-center text-soft">No students are at or below {CRITICAL} marks.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className={`${panel} mt-6 overflow-x-auto`}>
+        <h3 className="font-display text-lg font-bold text-ink">Conduct &amp; discipline breakdown</h3>
+        <p className="text-sm text-soft">
+          Every active student's deductions, restorations, warnings, and current standing this term.
+        </p>
+        <table className="mt-4 w-full min-w-[820px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-wide text-faint">
+            <tr>
+              <th className="py-2">Student name</th><th>Class</th><th>Marks deducted</th>
+              <th>Marks restored</th><th>Warnings</th><th>Current balance</th><th>Standing</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...balances]
+              .sort((a, b) => (a.current_marks ?? 0) - (b.current_marks ?? 0))
+              .map((b) => {
+                const standing = standingOf(b.current_marks ?? 0, criticalThreshold, warningThreshold);
+                return (
+                  <tr key={b.student_id} className="border-t border-hairline">
+                    <td className="py-3 font-semibold text-ink">{b.full_name}</td>
+                    <td className="text-soft">{b.class_name ?? "—"}</td>
+                    <td className="text-danger">−{b.marks_deducted ?? 0}</td>
+                    <td className="text-ok">+{b.marks_restored ?? 0}</td>
+                    <td className="text-ink">{offensesByStudent.get(b.student_id ?? "") ?? 0}</td>
+                    <td className="font-semibold text-ink">
+                      {b.current_marks}/{b.starting_marks ?? 40}
+                    </td>
+                    <td>
+                      <span className={`rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${STANDING_CLASS[standing]}`}>
+                        {STANDING_LABEL[standing]}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            {!loading && !balances.length && (
+              <tr><td colSpan={7} className="py-6 text-center text-soft">No student records found.</td></tr>
             )}
           </tbody>
         </table>
