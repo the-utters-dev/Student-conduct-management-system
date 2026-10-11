@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useAuth } from "@/hooks/useAuth";
 import { DEFAULT_SETTINGS, useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { STANDING_CLASS, STANDING_LABEL, useConductStandings } from "@/hooks/useConductStandings";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
