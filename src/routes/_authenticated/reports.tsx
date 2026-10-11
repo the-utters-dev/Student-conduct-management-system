@@ -15,6 +15,8 @@ import {
 import { DashboardShell } from "@/components/DashboardShell";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { STANDING_CLASS, STANDING_LABEL, standingOf } from "@/hooks/useConductStandings";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   head: () => ({
@@ -70,6 +72,9 @@ function csvCell(v: unknown) {
 
 function ReportsPage() {
   const [historyFor, setHistoryFor] = useState<Balance | null>(null);
+  const { data: school } = useSchoolSettings();
+  const criticalThreshold = school?.critical_threshold ?? 20;
+  const warningThreshold = school?.warning_threshold ?? 30;
 
   const balancesQ = useQuery({
     queryKey: ["student-balances"],
