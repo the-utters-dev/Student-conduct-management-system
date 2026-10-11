@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/DashboardShell";
+import { useAuth } from "@/hooks/useAuth";
+import { DEFAULT_SETTINGS, useSchoolSettings } from "@/hooks/useSchoolSettings";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -78,10 +80,17 @@ const CATEGORY_BREAKDOWN = [
 ];
 
 function Dashboard() {
+  const { profile } = useAuth();
+  const { data: school } = useSchoolSettings();
+  const now = new Date();
+  const h = now.getHours();
+  const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
+  const name = profile?.full_name?.trim() || "there";
+  const date = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return (
     <DashboardShell
-      greeting="Good morning, Ms. Adeyemi"
-      dateLine="Tuesday, 22 September 2026 · Northfield Academy"
+      greeting={`Good ${part}, ${name}`}
+      dateLine={`${date} · ${school?.school_name ?? DEFAULT_SETTINGS.school_name}`}
     >
       <div className="grid grid-cols-3 gap-6">
         {KPI_CARDS.map((card) => (
