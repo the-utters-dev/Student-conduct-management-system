@@ -25,64 +25,38 @@ export const Route = createFileRoute("/_authenticated/")({
   component: Dashboard,
 });
 
-const KPI_CARDS = [
-  {
-    label: "Active cases",
-    value: "47",
-    note: "5 resolved this week",
-    icon: "C",
-    iconClass: "bg-brand/10 text-brand",
-  },
-  {
-    label: "Pending actions",
-    value: "12",
-    note: "3 overdue for sign-off",
-    icon: "P",
-    iconClass: "bg-warn/15 text-warn",
-  },
-  {
-    label: "Incidents logged",
-    value: "128",
-    note: "This term, up 8%",
-    icon: "I",
-    iconClass: "bg-accent/15 text-accent",
-  },
-];
-
-const RECENT_ACTIONS = [
-  {
-    initials: "JO",
-    student: "Jordan Okafor · Year 10B",
-    detail: "Verbal warning issued for disruption in Period 3",
-    badge: "Warning",
-    badgeClass: "bg-warn/15 text-warn",
-  },
-  {
-    initials: "PR",
-    student: "Priya Raman · Year 11A",
-    detail: "Detention logged for late submission of uniform",
-    badge: "Detention",
-    badgeClass: "bg-danger/15 text-danger",
-  },
-  {
-    initials: "MC",
-    student: "Marcus Cole · Year 9C",
-    detail: "Restorative chat completed, case closed",
-    badge: "Closed",
-    badgeClass: "bg-ok/15 text-ok",
-  },
-];
-
-const CATEGORY_BREAKDOWN = [
-  { label: "Disruption", pct: 38, barClass: "bg-brand" },
-  { label: "Uniform", pct: 24, barClass: "bg-accent" },
-  { label: "Lateness", pct: 21, barClass: "bg-warn" },
-  { label: "Respect", pct: 11, barClass: "bg-pastel" },
-];
-
 function Dashboard() {
   const { profile } = useAuth();
   const { data: school } = useSchoolSettings();
+  const { rows, atRisk, criticalCount, warningCount, isPending } = useConductStandings();
+  const totalStudents = rows.length;
+  const avgScore = totalStudents
+    ? rows.reduce((s, r) => s + (r.current_marks ?? 0), 0) / totalStudents
+    : 0;
+  const goodCount = totalStudents - atRisk.length;
+  const KPI_CARDS = [
+    {
+      label: "Students at risk",
+      value: isPending ? "…" : String(atRisk.length),
+      note: `${criticalCount} critical · ${warningCount} warning`,
+      icon: "R",
+      iconClass: "bg-danger/15 text-danger",
+    },
+    {
+      label: "Average conduct score",
+      value: isPending ? "…" : `${avgScore.toFixed(1)}/40`,
+      note: `Across ${totalStudents} active students`,
+      icon: "A",
+      iconClass: "bg-brand/10 text-brand",
+    },
+    {
+      label: "In good standing",
+      value: isPending ? "…" : String(goodCount),
+      note: "Above the warning threshold",
+      icon: "G",
+      iconClass: "bg-ok/15 text-ok",
+    },
+  ];
   const now = new Date();
   const h = now.getHours();
   const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
