@@ -7,7 +7,7 @@ import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/", letter: "D", disciplineOnly: false },
   { label: "Students", to: "/students", letter: "S", disciplineOnly: false },
-  { label: "Conduct Actions", to: "/conduct-actions", letter: "A", disciplineOnly: true },
+  { label: "Conduct Actions", to: "/conduct-actions", letter: "A", disciplineOnly: false },
   { label: "Reports", to: "/reports", letter: "R", disciplineOnly: false },
   { label: "Audit Logs", to: "/audit-logs", letter: "L", disciplineOnly: false },
   { label: "Settings", to: "/settings", letter: "⚙", disciplineOnly: false },
@@ -85,7 +85,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
               </div>
             )}
             <div className="leading-tight">
-              <div className="font-display text-[15px] font-bold text-ink">SCDMS</div>
+              <div className="font-display text-[15px] font-bold text-ink">{school?.school_name || "SCDMS"}</div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-faint">
                 Conduct &amp; Discipline
               </div>
