@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import avatar from "@/assets/avatar.png";
 import { ROLE_LABELS, useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { useConductStandings } from "@/hooks/useConductStandings";
 
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/", letter: "D", disciplineOnly: false },
@@ -65,6 +66,8 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const navItems = NAV_ITEMS.filter((i) => !i.disciplineOnly || isDisciplineStaff);
   const roleInfo = role ? ROLE_LABELS[role] : null;
   const { data: school } = useSchoolSettings();
+  const { atRisk, criticalCount } = useConductStandings();
+  const openCases = atRisk.length;
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
 
   return (
@@ -105,11 +108,14 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
               Open cases
             </div>
-            <div className="mt-1 font-display text-3xl font-bold text-ink">12</div>
+            <div className="mt-1 font-display text-3xl font-bold text-ink">{openCases}</div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-track">
-              <div className="h-full w-[62%] rounded-full bg-linear-to-r from-brand to-accent"></div>
+              <div
+                className="h-full rounded-full bg-linear-to-r from-brand to-accent"
+                style={{ width: `${Math.min(100, openCases * 10)}%` }}
+              ></div>
             </div>
-            <div className="mt-2 text-[11px] text-soft">3 flagged for review</div>
+            <div className="mt-2 text-[11px] text-soft">{criticalCount} critical — flagged for review</div>
           </div>
         </aside>
 
