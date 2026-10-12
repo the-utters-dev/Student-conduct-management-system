@@ -1,5 +1,6 @@
 import { Link, LinkProps, useNavigate, useRouterState } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Menu } from "lucide-react";
 import avatar from "@/assets/avatar.png";
 import { ROLE_LABELS, useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
@@ -17,14 +18,17 @@ const NAV_ITEMS = [
 function SidebarLink({
   item,
   active,
+  onNavigate,
 }: {
   item: (typeof NAV_ITEMS)[number];
   active: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
       to={item.to}
       activeOptions={{ exact: true }}
+      onClick={onNavigate}
       className={
         active
           ? "flex items-center gap-3 rounded-2xl bg-brand/10 px-3 py-2.5 ring-1 ring-brand/20"
@@ -60,6 +64,7 @@ interface DashboardShellProps {
 }
 
 export function DashboardShell({ greeting, dateLine, children }: DashboardShellProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const { profile, role, isDisciplineStaff, signOut } = useAuth();
@@ -71,14 +76,60 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
 
   return (
-    <div className="relative min-h-screen overflow-hidden font-sans text-body antialiased">
+    <div className="relative min-h-screen overflow-x-clip font-sans text-body antialiased">
       <div className="app-canvas" />
       <div className="bloom bloom-a" />
       <div className="bloom bloom-b" />
       <div className="bloom bloom-c" />
 
-      <div className="relative mx-auto flex min-h-screen max-w-[1440px] gap-6 p-6">
-        <aside className="w-64 shrink-0 rounded-3xl border border-glass-line bg-glass shadow-panel-lg backdrop-blur-2xl">
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            className="absolute inset-0 bg-slate-950/35"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <aside
+            id="mobile-navigation"
+            className="relative h-full w-[min(20rem,85vw)] overflow-y-auto border-r border-glass-line bg-glass p-4 shadow-panel-lg backdrop-blur-2xl"
+          >
+            <div className="flex items-center gap-3 px-2 py-3">
+              {school?.logo_url ? (
+                <img src={school.logo_url} alt="School logo" className="h-11 w-11 rounded-2xl object-cover ring-1 ring-hairline" />
+              ) : (
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-linear-to-br from-brand to-accent text-on-brand shadow-brand-glow">
+                  <span className="font-display text-lg font-bold">S</span>
+                </div>
+              )}
+              <div className="leading-tight">
+                <div className="font-display text-[15px] font-bold text-ink">{school?.school_name || "SCDMS"}</div>
+                <div className="text-[11px] uppercase tracking-[0.14em] text-faint">
+                  Conduct &amp; Discipline
+                </div>
+              </div>
+            </div>
+            <div className="mt-5 px-1">
+              <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
+                Main
+              </div>
+              <nav aria-label="Main navigation" className="space-y-1">
+                {navItems.map((item) => (
+                  <SidebarLink
+                    key={item.to}
+                    item={item}
+                    active={pathname === item.to}
+                    onNavigate={() => setMobileMenuOpen(false)}
+                  />
+                ))}
+              </nav>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      <div className="relative mx-auto flex min-h-screen max-w-[1440px] gap-3 p-3 md:gap-6 md:p-6">
+        <aside className="hidden w-64 shrink-0 rounded-3xl border border-glass-line bg-glass shadow-panel-lg backdrop-blur-2xl md:block">
           <div className="flex items-center gap-3 px-6 py-6">
             {school?.logo_url ? (
               <img src={school.logo_url} alt="School logo" className="h-11 w-11 rounded-2xl object-cover ring-1 ring-hairline" />
@@ -119,32 +170,49 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-6">
-          <header className="flex items-center gap-4 rounded-3xl border border-glass-line bg-glass px-6 py-4 shadow-panel-lg backdrop-blur-2xl">
+        <div className="flex min-w-0 flex-1 flex-col gap-3 md:gap-6">
+          <div className="flex items-center gap-3 rounded-2xl border border-glass-line bg-glass px-4 py-3 shadow-panel-lg backdrop-blur-2xl md:hidden">
+            <button
+              type="button"
+              aria-label="Open navigation menu"
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-navigation"
+              onClick={() => setMobileMenuOpen((isOpen) => !isOpen)}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-ink transition hover:bg-glass-bright"
+            >
+              <Menu size={21} aria-hidden="true" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display text-sm font-bold text-ink">{school?.school_name || "SCDMS"}</div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-faint">Conduct &amp; Discipline</div>
+            </div>
+          </div>
+
+          <header className="flex flex-wrap items-center gap-3 rounded-2xl border border-glass-line bg-glass px-4 py-3 shadow-panel-lg backdrop-blur-2xl md:flex-nowrap md:gap-4 md:rounded-3xl md:px-6 md:py-4">
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="font-display text-lg font-bold text-ink">{greeting}</div>
               <div className="text-[12px] text-soft">{dateLine}</div>
             </div>
-            <div className="flex items-center gap-2 rounded-2xl bg-glass-bright px-3 py-2 ring-1 ring-hairline">
+            <div className="order-3 flex w-full min-w-0 items-center gap-2 rounded-2xl bg-glass-bright px-3 py-2 ring-1 ring-hairline md:order-none md:w-auto">
               <span className="text-sm text-faint">⌕</span>
               <input
-                className="w-52 bg-transparent text-sm text-body outline-none placeholder:text-faint"
+                className="w-full bg-transparent text-sm text-body outline-none placeholder:text-faint md:w-52"
                 placeholder="Search students, cases, actions"
               />
             </div>
-            <div className="flex items-center gap-3 rounded-2xl bg-glass-bright px-2 py-1.5 ring-1 ring-hairline">
+            <div className="ml-auto flex max-w-full items-center gap-2 rounded-2xl bg-glass-bright px-2 py-1.5 ring-1 ring-hairline md:gap-3">
               <img
                 src={profile?.avatar_url || avatar}
                 alt={displayName}
                 className="h-9 w-9 rounded-xl object-cover ring-1 ring-hairline"
               />
-              <div className="leading-tight">
+              <div className="hidden leading-tight sm:block">
                 <div className="text-[13px] font-semibold text-ink">{displayName}</div>
                 <div className="text-[11px] text-soft">
                   {profile?.job_title ?? roleInfo?.label ?? "Role pending"}
                 </div>
               </div>
-              <span className="rounded-lg bg-brand/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-brand ring-1 ring-brand/20">
+              <span className="hidden rounded-lg bg-brand/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-brand ring-1 ring-brand/20 sm:inline">
                 {roleInfo?.badge ?? "Staff"}
               </span>
               <button

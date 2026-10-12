@@ -123,6 +123,7 @@ BEGIN
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
     -- RESTRICTIVE: combined with (not replacing) every existing role policy.
     EXECUTE format('DROP POLICY IF EXISTS "Same school only" ON public.%I', t);
+    DROP FUNCTION IF EXISTS public.is_platform_admin(UUID);
     EXECUTE format($p$CREATE POLICY "Same school only" ON public.%I AS RESTRICTIVE FOR ALL TO authenticated
       USING (public.is_platform_admin(auth.uid())
              OR (school_id = public.current_school_id() AND public.school_is_active(school_id)))
