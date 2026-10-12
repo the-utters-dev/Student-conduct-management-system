@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -70,6 +71,7 @@ function payloadObj(p: Json | null): Record<string, Json | undefined> {
 }
 
 function AuditViewer() {
+  const { schoolId, isPlatformAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [from, setFrom] = useState("");
@@ -77,13 +79,15 @@ function AuditViewer() {
   const [selected, setSelected] = useState<AuditRow | null>(null);
 
   const q = useQuery({
-    queryKey: ["audit-logs"],
+    queryKey: ["audit-logs", schoolId],
     queryFn: async () => {
-      const { data: logs, error } = await supabase
-        .from("audit_logs")
-        .select("*")
+      // The database also enforces this; filtering here keeps platform admins scoped too.
+      let query = (supabase as unknown as SupabaseClient).from("audit_logs").select("*");
+      if (schoolId && !isPlatformAdmin) query = query.eq("school_id", schoolId);
+      const { data: logs, error } = (await query
         .order("created_at", { ascending: false })
-        .limit(1000);
+        .limit(1000)) as { data: AuditRow[] | null; error: Error | null };
+      if (error || !logs) throw error ?? new Error("Could not load audit logs");
       if (error) throw error;
       const ids = [...new Set(logs.map((l) => l.user_id).filter(Boolean))] as string[];
       const staff = new Map<string, Staff>();
