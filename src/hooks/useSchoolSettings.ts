@@ -11,7 +11,7 @@ export interface SchoolSettings {
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
-  school_name: "Northfield Academy",
+  school_name: "Your School",
   logo_url: null,
   academic_year: "2026/2027",
   critical_threshold: 20,

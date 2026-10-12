@@ -1,3 +1,4 @@
+
 import { Link, LinkProps, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { Menu } from "lucide-react";
@@ -67,10 +68,11 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { profile, role, isDisciplineStaff, signOut } = useAuth();
+  const { profile, school: tenantSchool, role, isDisciplineStaff, signOut } = useAuth();
   const navItems = NAV_ITEMS.filter((i) => !i.disciplineOnly || isDisciplineStaff);
   const roleInfo = role ? ROLE_LABELS[role] : null;
   const { data: school } = useSchoolSettings();
+  const schoolName = tenantSchool?.name || school?.school_name || "Your School";
   const { atRisk, criticalCount } = useConductStandings();
   const openCases = atRisk.length;
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
@@ -103,7 +105,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
                 </div>
               )}
               <div className="leading-tight">
-                <div className="font-display text-[15px] font-bold text-ink">{school?.school_name || "SCDMS"}</div>
+                <div className="font-display text-[15px] font-bold text-ink">{schoolName}</div>
                 <div className="text-[11px] uppercase tracking-[0.14em] text-faint">
                   Conduct &amp; Discipline
                 </div>
@@ -139,7 +141,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
               </div>
             )}
             <div className="leading-tight">
-              <div className="font-display text-[15px] font-bold text-ink">{school?.school_name || "SCDMS"}</div>
+              <div className="font-display text-[15px] font-bold text-ink">{schoolName}</div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-faint">
                 Conduct &amp; Discipline
               </div>
@@ -183,7 +185,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
               <Menu size={21} aria-hidden="true" />
             </button>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-display text-sm font-bold text-ink">{school?.school_name || "SCDMS"}</div>
+              <div className="truncate font-display text-sm font-bold text-ink">{schoolName}</div>
               <div className="text-[10px] uppercase tracking-[0.14em] text-faint">Conduct &amp; Discipline</div>
             </div>
           </div>

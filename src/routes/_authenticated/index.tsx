@@ -1,19 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useAuth } from "@/hooks/useAuth";
-import { DEFAULT_SETTINGS, useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { STANDING_CLASS, STANDING_LABEL, useConductStandings } from "@/hooks/useConductStandings";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
     meta: [
-      { title: "SCDMS Dashboard — Northfield Academy" },
+      { title: "SCDMS Dashboard" },
       {
         name: "description",
         content:
           "School Conduct & Discipline Management System dashboard: open cases, recent conduct actions, and incident trends at a glance.",
       },
-      { property: "og:title", content: "SCDMS Dashboard — Northfield Academy" },
+      { property: "og:title", content: "SCDMS Dashboard" },
       {
         property: "og:description",
         content: "Track open conduct cases, recent actions, and incident trends.",
@@ -26,8 +26,9 @@ export const Route = createFileRoute("/_authenticated/")({
 });
 
 function Dashboard() {
-  const { profile } = useAuth();
+  const { profile, school: tenantSchool } = useAuth();
   const { data: school } = useSchoolSettings();
+  const schoolName = tenantSchool?.name || school?.school_name || "Your School";
   const { rows, atRisk, criticalCount, warningCount, isPending } = useConductStandings();
   const totalStudents = rows.length;
   const avgScore = totalStudents
@@ -65,13 +66,13 @@ function Dashboard() {
   return (
     <DashboardShell
       greeting={`Good ${part}, ${name}`}
-      dateLine={`${date} · ${school?.school_name ?? DEFAULT_SETTINGS.school_name}`}
+      dateLine={`${date} · ${schoolName}`}
     >
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
         {KPI_CARDS.map((card) => (
           <div
             key={card.label}
-            className="rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl"
+            className="min-w-0 rounded-3xl border border-glass-line bg-glass p-3 shadow-panel backdrop-blur-2xl sm:p-5"
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
@@ -83,14 +84,14 @@ function Dashboard() {
                 {card.icon}
               </span>
             </div>
-            <div className="mt-3 font-display text-4xl font-bold text-ink">{card.value}</div>
-            <div className="mt-1 text-[12px] text-soft">{card.note}</div>
+            <div className="mt-3 break-words font-display text-3xl font-bold leading-tight text-ink sm:text-4xl">{card.value}</div>
+            <div className="mt-1 break-words text-[12px] text-soft">{card.note}</div>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
-        <div className="col-span-3 rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="min-w-0 rounded-3xl border border-glass-line bg-glass p-3 shadow-panel backdrop-blur-2xl sm:p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <div className="font-display text-[15px] font-bold text-ink">
               Students at risk
@@ -106,31 +107,35 @@ function Dashboard() {
             {atRisk.slice(0, 6).map((row) => (
               <div
                 key={row.student_id}
-                className="flex items-center gap-4 rounded-2xl bg-glass-bright px-4 py-3 ring-1 ring-hairline"
+                className="flex flex-col gap-2 rounded-2xl bg-glass-bright p-3 ring-1 ring-hairline sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3"
               >
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-glass-bright text-[12px] font-bold text-ink ring-1 ring-hairline">
-                  {(row.full_name ?? "?")
-                    .split(" ")
-                    .map((p) => p[0])
-                    .slice(0, 2)
-                    .join("")}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-ink">
-                    {row.full_name} · {row.class_name ?? "—"}
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-glass-bright text-[12px] font-bold text-ink ring-1 ring-hairline">
+                    {(row.full_name ?? "?")
+                      .split(" ")
+                      .map((p) => p[0])
+                      .slice(0, 2)
+                      .join("")}
                   </div>
-                  <div className="truncate text-[12px] text-soft">
-                    {row.admission_no} · {row.entries_count ?? 0} entries this term
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold text-ink">
+                      {row.full_name}
+                    </div>
+                    <div className="break-words text-[12px] text-soft">
+                      {row.class_name ?? "—"} · {row.admission_no} · {row.entries_count ?? 0} entries this term
+                    </div>
                   </div>
                 </div>
-                <span className="shrink-0 font-display text-sm font-bold text-ink">
-                  {row.current_marks}/{row.starting_marks ?? 40}
-                </span>
-                <span
-                  className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${STANDING_CLASS[row.standing]}`}
-                >
-                  {STANDING_LABEL[row.standing]}
-                </span>
+                <div className="flex items-center justify-between gap-3 sm:justify-end">
+                  <span className="shrink-0 whitespace-nowrap font-display text-sm font-bold text-ink">
+                    {row.current_marks}/{row.starting_marks ?? 40}
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${STANDING_CLASS[row.standing]}`}
+                  >
+                    {STANDING_LABEL[row.standing]}
+                  </span>
+                </div>
               </div>
             ))}
             {!isPending && !atRisk.length && (
@@ -141,7 +146,7 @@ function Dashboard() {
           </div>
         </div>
 
-        <div className="col-span-2 rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
+        <div className="min-w-0 rounded-3xl border border-glass-line bg-glass p-3 shadow-panel backdrop-blur-2xl sm:p-5 lg:col-span-1">
           <div className="font-display text-[15px] font-bold text-ink">
             Standing overview
           </div>
