@@ -89,18 +89,11 @@ function ConductActionsPage() {
   const recentQuery = useQuery({
     queryKey: ["conduct-logs", "recent", schoolId],
     queryFn: async () => {
-      let res = await db
+      const res = await db
         .from("conduct_logs")
         .select("id, student_id, entry_type, marks, reason, occurred_on, evidence_url, offense:offenses_catalog(title), student:students(full_name, admission_no, class_name, parent_phone)")
         .order("created_at", { ascending: false })
         .limit(12);
-      if (res.error) {
-        res = await db
-          .from("conduct_logs")
-          .select("id, student_id, entry_type, marks, reason, occurred_on, offense:offenses_catalog(title), student:students(full_name, admission_no, class_name, parent_phone)")
-          .order("created_at", { ascending: false })
-          .limit(12);
-      }
       if (res.error) throw res.error;
       return (res.data ?? []) as unknown as RecentEntry[];
     },
