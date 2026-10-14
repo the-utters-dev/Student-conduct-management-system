@@ -5,6 +5,9 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { db, insertWithColumnFallback, uploadEvidence } from "@/lib/evidence";
+import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { ParentMessageComposer, type ComposerEntry } from "@/components/ParentMessageComposer";
 
 export const Route = createFileRoute("/_authenticated/conduct-actions")({
   head: () => ({
@@ -55,6 +58,18 @@ interface BalanceRow {
   entries_count: number;
 }
 
+interface RecentEntry {
+  id: string;
+  student_id: string;
+  entry_type: string;
+  marks: number;
+  reason: string | null;
+  occurred_on: string;
+  evidence_url?: string | null;
+  offense: { title: string } | null;
+  student: { full_name: string; admission_no: string; class_name: string; parent_phone: string | null } | null;
+}
+
 const inputClass =
   "w-full rounded-2xl bg-glass-bright px-4 py-3 text-sm text-body outline-none ring-1 ring-hairline transition placeholder:text-faint focus:ring-2 focus:ring-brand/50";
 
@@ -65,7 +80,32 @@ function todayISO() {
 }
 
 function ConductActionsPage() {
-  const { isDisciplineStaff, user } = useAuth();
+  const { isDisciplineStaff, user, schoolId } = useAuth();
+  const { data: schoolSettings } = useSchoolSettings();
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidenceKey, setEvidenceKey] = useState(0);
+  const [composer, setComposer] = useState<ComposerEntry | null>(null);
+
+  const recentQuery = useQuery({
+    queryKey: ["conduct-logs", "recent", schoolId],
+    queryFn: async () => {
+      let res = await db
+        .from("conduct_logs")
+        .select("id, student_id, entry_type, marks, reason, occurred_on, evidence_url, offense:offenses_catalog(title), student:students(full_name, admission_no, class_name, parent_phone)")
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (res.error) {
+        res = await db
+          .from("conduct_logs")
+          .select("id, student_id, entry_type, marks, reason, occurred_on, offense:offenses_catalog(title), student:students(full_name, admission_no, class_name, parent_phone)")
+          .order("created_at", { ascending: false })
+          .limit(12);
+      }
+      if (res.error) throw res.error;
+      return (res.data ?? []) as unknown as RecentEntry[];
+    },
+  });
+
   const queryClient = useQueryClient();
 
   const [studentId, setStudentId] = useState("");
@@ -174,9 +214,10 @@ function ConductActionsPage() {
   const submit = useMutation({
     mutationFn: async () => {
       if (!studentId || !termId) throw new Error("Select a student and an active term first.");
-      const { data: log, error } = await supabase
-        .from("conduct_logs")
-        .insert({
+      const evidence = await uploadEvidence(evidenceFile, schoolId);
+      const { data: log, dropped } = await insertWithColumnFallback(
+        "conduct_logs",
+        {
           student_id: studentId,
           term_id: termId,
           offense_id: offenseId || null,
@@ -185,10 +226,11 @@ function ConductActionsPage() {
           reason: reason.trim() || null,
           occurred_on: occurredOn,
           recorded_by: user?.id ?? null,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
+          evidence_path: evidence.evidence_path,
+          evidence_url: evidence.evidence_url,
+        },
+        ["evidence_path", "evidence_url"],
+      );
 
       const offense = offensesQuery.data?.find((o) => o.id === offenseId);
       const label = entryType === "deduction" ? "Deduction" : "Restoration";
@@ -232,7 +274,18 @@ function ConductActionsPage() {
       });
       if (auditError) console.error("Failed to write audit entry", auditError);
 
-      return { smsQueued, notifyRequested: notifyParent, hasPhone: Boolean(phone) };
+      return {
+        smsQueued,
+        notifyRequested: notifyParent,
+        hasPhone: Boolean(phone),
+        evidenceNote: dropped.length
+          ? "Evidence not stored (database not updated)"
+          : evidence.usedFallback
+            ? "Photo upload failed — a small copy was saved"
+            : evidenceFile
+              ? "Evidence attached"
+              : null,
+      };
     },
     onSuccess: async (result) => {
       const smsLine = result.smsQueued
@@ -241,12 +294,14 @@ function ConductActionsPage() {
           ? "No parent phone on file — SMS skipped"
           : "SMS not sent";
       toast.success("Conduct log recorded successfully", {
-        description: `Ledger entry saved · ${smsLine}`,
+        description: `Ledger entry saved · ${smsLine}${result.evidenceNote ? ` · ${result.evidenceNote}` : ""}`,
       });
       setOffenseId("");
       setReason("");
       setMarks("1");
       setOccurredOn(todayISO());
+      setEvidenceFile(null);
+      setEvidenceKey((k) => k + 1);
       await queryClient.invalidateQueries({ queryKey: ["balance"] });
       await queryClient.invalidateQueries({ queryKey: ["conduct-logs"] });
       await queryClient.invalidateQueries({ queryKey: ["notification-logs"] });
@@ -432,6 +487,27 @@ function ConductActionsPage() {
               />
             </div>
 
+            <div>
+              <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                Attach evidence (photo, optional)
+              </label>
+              <input
+                key={evidenceKey}
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f && (!f.type.startsWith("image/") || f.size > 5 * 1024 * 1024)) {
+                    toast.error("Choose an image smaller than 5 MB.");
+                    e.target.value = "";
+                    return;
+                  }
+                  setEvidenceFile(f);
+                }}
+                className={`${inputClass} file:mr-3 file:rounded-xl file:border-0 file:bg-brand/10 file:px-3 file:py-1 file:text-brand`}
+              />
+            </div>
+
             <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-glass-bright px-4 py-3 ring-1 ring-hairline">
               <input
                 type="checkbox"
@@ -531,8 +607,63 @@ function ConductActionsPage() {
               </>
             )}
           </div>
+
+          <div className="rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
+            <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-faint">
+              Recent entries
+            </h3>
+            {(recentQuery.data ?? []).length === 0 && (
+              <p className="mt-4 text-[13px] text-soft">No entries recorded yet.</p>
+            )}
+            <ul className="mt-4 space-y-2">
+              {(recentQuery.data ?? []).map((r) => (
+                <li key={r.id} className="flex items-center gap-3 rounded-2xl bg-glass-bright px-3 py-2 ring-1 ring-hairline">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-ink">{r.student?.full_name ?? "Student"}</p>
+                    <p className="truncate text-[11px] text-soft">
+                      <span className={r.entry_type === "deduction" ? "text-danger" : "text-ok"}>
+                        {r.entry_type === "deduction" ? "−" : "+"}{r.marks}
+                      </span>{" "}
+                      · {r.offense?.title ?? r.reason ?? "Conduct review"} · {r.occurred_on}
+                      {r.evidence_url ? " · 📎" : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const { data: bal } = await supabase
+                        .from("student_conduct_balances")
+                        .select("current_marks, starting_marks")
+                        .eq("student_id", r.student_id)
+                        .maybeSingle();
+                      setComposer({
+                        conductLogId: r.id,
+                        studentId: r.student_id,
+                        phone: r.student?.parent_phone ?? null,
+                        context: {
+                          studentName: r.student?.full_name ?? "your child",
+                          entryType: r.entry_type === "restoration" ? "restoration" : "deduction",
+                          marks: r.marks,
+                          reason: r.offense?.title ?? r.reason,
+                          balance: bal?.current_marks ?? null,
+                          startingMarks: bal?.starting_marks ?? 40,
+                          occurredOn: r.occurred_on,
+                          evidenceUrl: r.evidence_url ?? null,
+                          schoolName: schoolSettings?.school_name ?? "School",
+                        },
+                      });
+                    }}
+                    className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-brand ring-1 ring-brand/30 hover:bg-brand/10"
+                  >
+                    Message parent
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         </aside>
       </div>
+      <ParentMessageComposer entry={composer} onOpenChange={(o) => !o && setComposer(null)} />
     </DashboardShell>
   );
 }
