@@ -29,8 +29,11 @@ export async function uploadEvidence(file: File | null, schoolId: string | null)
       upsert: false,
     });
     if (error) throw error;
-    const { data } = supabase.storage.from(EVIDENCE_BUCKET).getPublicUrl(path);
-    return { evidence_path: path, evidence_url: data.publicUrl, usedFallback: false };
+    // Private bucket: share a 30-day signed link (usable in parent messages).
+    const { data, error: signErr } = await supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .createSignedUrl(path, 60 * 60 * 24 * 30);
+    return { evidence_path: path, evidence_url: signErr ? null : data.signedUrl, usedFallback: false };
   } catch (err) {
     console.warn("Evidence upload failed, storing a resized copy instead", err);
     const dataUrl = await fileToResizedDataUrl(file, 800);
