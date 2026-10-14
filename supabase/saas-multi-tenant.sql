@@ -143,8 +143,8 @@ DROP POLICY IF EXISTS "Staff can draft notifications" ON public.notification_log
 CREATE POLICY "Staff can draft notifications" ON public.notification_logs
   FOR INSERT TO authenticated WITH CHECK (public.is_staff(auth.uid()) AND status = 'draft');
 
--- 7. Evidence storage (public bucket, files under <school_id>/...) ---------------
--- Bucket itself is created separately (public, id 'conduct-evidence').
+-- 7. Evidence storage (private bucket, files under <school_id>/...) ---------------
+-- Bucket itself is created separately (private, id conduct-evidence).
 
 DROP POLICY IF EXISTS "Staff upload evidence for their school" ON storage.objects;
 CREATE POLICY "Staff upload evidence for their school" ON storage.objects
