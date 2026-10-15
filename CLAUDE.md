@@ -38,5 +38,7 @@ Owner: Wix (freelance developer). Currency: RWF. Languages: English now; Kinyarw
 
 ## Workflow
 - One task per git branch (feature/<short-name>). Keep main always working.
+- Before starting any task: git checkout main && git pull, then create the new branch from the updated main.
+  Never edit in Lovable and VS Code at the same time without pulling first.
 - Before finishing a task run: npx tsc --noEmit and npm run build, and fix all errors you introduced.
 - End every task with a short summary: files changed, SQL scripts Wix must run (in order), and how to test it manually.
