@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./useAuth";
 
 export interface SchoolSettings {
   school_name: string;
@@ -8,6 +9,10 @@ export interface SchoolSettings {
   critical_threshold: number;
   warning_threshold: number;
   notify_on_threshold: boolean;
+  school_type?: string;
+  is_boarding?: boolean;
+  max_conduct_marks?: number;
+  class_levels?: string[];
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
@@ -17,13 +22,37 @@ export const DEFAULT_SETTINGS: SchoolSettings = {
   critical_threshold: 20,
   warning_threshold: 30,
   notify_on_threshold: true,
+  school_type: "secondary",
+  is_boarding: true,
+  max_conduct_marks: 40,
+  class_levels: ["S1", "S2", "S3", "S4", "S5", "S6"],
 };
 
 export function useSchoolSettings() {
+  const { schoolId } = useAuth();
+
   return useQuery({
-    queryKey: ["school-settings"],
+    queryKey: ["school-settings", schoolId],
     queryFn: async (): Promise<SchoolSettings> => {
-      const { data } = await supabase.from("school_settings").select("*").eq("id", 1).maybeSingle();
+      // Try to load by school_id first (multi-tenant mode)
+      if (schoolId) {
+        const { data, error } = await (supabase.from("school_settings") as any)
+          .select("*")
+          .eq("school_id", schoolId)
+          .maybeSingle();
+
+        if (!error && data) {
+          return { ...DEFAULT_SETTINGS, ...(data ?? {}) };
+        }
+      }
+
+      // Fallback: try the old id=1 row (for backwards compatibility before migration)
+      const { data } = await supabase
+        .from("school_settings")
+        .select("*")
+        .eq("id", 1)
+        .maybeSingle();
+
       return { ...DEFAULT_SETTINGS, ...(data ?? {}) };
     },
   });

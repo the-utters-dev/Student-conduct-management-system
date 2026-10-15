@@ -65,7 +65,7 @@ function todayISO() {
 }
 
 function ConductActionsPage() {
-  const { isDisciplineStaff, user } = useAuth();
+  const { isDisciplineStaff, user, schoolId, school } = useAuth();
   const queryClient = useQueryClient();
 
   const [studentId, setStudentId] = useState("");
@@ -79,7 +79,7 @@ function ConductActionsPage() {
   const [notifyParent, setNotifyParent] = useState(true);
 
   const studentsQuery = useQuery({
-    queryKey: ["students", "active"],
+    queryKey: ["students", "active", schoolId],
     queryFn: async (): Promise<StudentOption[]> => {
       const { data, error } = await supabase
         .from("students")
@@ -92,7 +92,7 @@ function ConductActionsPage() {
   });
 
   const offensesQuery = useQuery({
-    queryKey: ["offenses", "active"],
+    queryKey: ["offenses", "active", schoolId],
     queryFn: async (): Promise<Offense[]> => {
       const { data, error } = await supabase
         .from("offenses_catalog")
@@ -105,7 +105,7 @@ function ConductActionsPage() {
   });
 
   const termQuery = useQuery({
-    queryKey: ["active-term"],
+    queryKey: ["active-term", schoolId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("academic_terms")
@@ -118,7 +118,7 @@ function ConductActionsPage() {
   });
 
   const balanceQuery = useQuery({
-    queryKey: ["balance", studentId],
+    queryKey: ["balance", studentId, schoolId],
     enabled: Boolean(studentId),
     queryFn: async (): Promise<BalanceRow | null> => {
       const { data, error } = await supabase
@@ -248,9 +248,9 @@ function ConductActionsPage() {
       setMarks("1");
       setOccurredOn(todayISO());
       await queryClient.invalidateQueries({ queryKey: ["balance"] });
-      await queryClient.invalidateQueries({ queryKey: ["conduct-logs"] });
-      await queryClient.invalidateQueries({ queryKey: ["notification-logs"] });
-      await queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
+      await queryClient.invalidateQueries({ queryKey: ["conduct-logs", schoolId] });
+      await queryClient.invalidateQueries({ queryKey: ["notification-logs", schoolId] });
+      await queryClient.invalidateQueries({ queryKey: ["audit-logs", schoolId] });
     },
     onError: (err: Error) => toast.error(err.message || "Couldn't save this entry."),
   });
@@ -259,7 +259,7 @@ function ConductActionsPage() {
     return (
       <DashboardShell
         greeting="Conduct Actions"
-        dateLine="Mark deductions and restorations · Northfield Academy"
+        dateLine={`Mark deductions and restorations · ${school?.name ?? "School"}`}
       >
         <div className="rounded-3xl border border-glass-line bg-glass p-10 shadow-panel backdrop-blur-2xl">
           <h2 className="font-display text-2xl font-bold text-ink">Restricted section</h2>
@@ -275,7 +275,7 @@ function ConductActionsPage() {
   return (
     <DashboardShell
       greeting="Conduct Actions"
-      dateLine="Mark deductions and restorations · Northfield Academy"
+      dateLine={`Mark deductions and restorations · ${school?.name ?? "School"}`}
     >
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <form

@@ -26,7 +26,7 @@ export function ParentMessageComposer({
   entry: ComposerEntry | null;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { user, isDisciplineStaff } = useAuth();
+  const { user, isDisciplineStaff, school, schoolId } = useAuth();
   const queryClient = useQueryClient();
   const [channel, setChannel] = useState<MessageChannel>("sms");
   const [text, setText] = useState("");
@@ -35,8 +35,10 @@ export function ParentMessageComposer({
   useEffect(() => {
     if (!entry) return;
     setPhone(entry.phone ?? "");
-    setText(buildParentMessage(channel, entry.context));
-  }, [entry, channel]);
+    // Use tenant school name, or fallback to entry.context.schoolName
+    const contextWithSchool = { ...entry.context, schoolName: school?.name ?? entry.context.schoolName };
+    setText(buildParentMessage(channel, contextWithSchool));
+  }, [entry, channel, school]);
 
   const save = useMutation({
     mutationFn: async (status: "draft" | "pending") => {
@@ -68,8 +70,8 @@ export function ParentMessageComposer({
       toast.success(status === "draft" ? "Draft saved" : `${channel === "sms" ? "SMS" : "WhatsApp message"} queued`, {
         description: dropped.length ? "Channel not stored — run the multi-tenant database script." : undefined,
       });
-      void queryClient.invalidateQueries({ queryKey: ["notification-logs"] });
-      void queryClient.invalidateQueries({ queryKey: ["audit-logs"] });
+      void queryClient.invalidateQueries({ queryKey: ["notification-logs", schoolId] });
+      void queryClient.invalidateQueries({ queryKey: ["audit-logs", schoolId] });
       onOpenChange(false);
     },
     onError: (e: Error) =>

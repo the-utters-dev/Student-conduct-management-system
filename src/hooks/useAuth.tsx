@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export type AppRole = "discipline_admin" | "school_leader" | "system_admin";
@@ -52,6 +53,7 @@ export const ROLE_LABELS: Record<AppRole, { label: string; badge: string }> = {
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
@@ -142,6 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setRole(null);
         setSession(null);
+        setSchool(null);
+        // Clear all cached queries to prevent cross-school data leakage
+        queryClient.clear();
       },
       refresh: async () => {
         const { data } = await supabase.auth.getSession();

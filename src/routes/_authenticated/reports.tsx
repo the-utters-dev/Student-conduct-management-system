@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { supabase } from "@/integrations/supabase/client";
 import { STANDING_CLASS, STANDING_LABEL, standingOf } from "@/hooks/useConductStandings";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   head: () => ({
@@ -31,8 +32,6 @@ export const Route = createFileRoute("/_authenticated/reports")({
   }),
   component: ReportsPage,
 });
-
-const CRITICAL = 20;
 
 interface Balance {
   student_id: string | null;
@@ -73,11 +72,12 @@ function csvCell(v: unknown) {
 function ReportsPage() {
   const [historyFor, setHistoryFor] = useState<Balance | null>(null);
   const { data: school } = useSchoolSettings();
+  const { schoolId } = useAuth();
   const criticalThreshold = school?.critical_threshold ?? 20;
   const warningThreshold = school?.warning_threshold ?? 30;
 
   const balancesQ = useQuery({
-    queryKey: ["student-balances"],
+    queryKey: ["student-balances", schoolId],
     queryFn: async (): Promise<Balance[]> => {
       const { data, error } = await supabase.from("student_conduct_balances").select("*");
       if (error) throw error;
@@ -88,7 +88,7 @@ function ReportsPage() {
   const termName = balancesQ.data?.[0]?.term_name ?? "Current term";
 
   const logsQ = useQuery({
-    queryKey: ["term-logs", termId],
+    queryKey: ["term-logs", termId, schoolId],
     enabled: !!termId,
     queryFn: async (): Promise<Log[]> => {
       const { data, error } = await supabase
@@ -112,10 +112,10 @@ function ReportsPage() {
     const restored = balances.reduce((s, b) => s + (b.marks_restored ?? 0), 0);
     const incidents = logs.filter((l) => l.entry_type === "deduction").length;
     const critical = balances
-      .filter((b) => (b.current_marks ?? 0) <= CRITICAL)
+      .filter((b) => (b.current_marks ?? 0) <= criticalThreshold)
       .sort((a, b) => (a.current_marks ?? 0) - (b.current_marks ?? 0));
     return { avg, deducted, restored, incidents, critical };
-  }, [balances, logs]);
+  }, [balances, logs, criticalThreshold]);
 
   const offensesByStudent = useMemo(() => {
     const m = new Map<string, number>();
@@ -156,7 +156,7 @@ function ReportsPage() {
     const rows = balances.map((b) => [
       b.full_name, b.admission_no, b.class_name, b.starting_marks, b.marks_deducted, b.marks_restored,
       b.current_marks, offensesByStudent.get(b.student_id ?? "") ?? 0, b.parent_phone,
-      (b.current_marks ?? 0) <= CRITICAL ? "Critical" : "OK",
+      (b.current_marks ?? 0) <= criticalThreshold ? "Critical" : "OK",
     ]);
     const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
@@ -238,7 +238,7 @@ function ReportsPage() {
 
       <div className={`${panel} mt-6 overflow-x-auto`}>
         <h3 className="font-display text-lg font-bold text-ink">Critical discipline alerts</h3>
-        <p className="text-sm text-soft">Students at or below {CRITICAL} marks.</p>
+        <p className="text-sm text-soft">Students at or below {criticalThreshold} marks.</p>
         <table className="mt-4 w-full min-w-[720px] text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-faint">
             <tr>
@@ -270,7 +270,7 @@ function ReportsPage() {
               </tr>
             ))}
             {!loading && !stats.critical.length && (
-              <tr><td colSpan={7} className="py-6 text-center text-soft">No students are at or below {CRITICAL} marks.</td></tr>
+              <tr><td colSpan={7} className="py-6 text-center text-soft">No students are at or below {criticalThreshold} marks.</td></tr>
             )}
           </tbody>
         </table>

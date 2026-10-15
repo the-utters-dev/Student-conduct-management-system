@@ -79,7 +79,16 @@ export function AcademicProgressionModal({
       return { count: chosen.length, mode: hist.error ? ("no-history" as const) : ("fallback" as const) };
     },
     onSuccess: async ({ count, mode }) => {
-      await supabase.from("school_settings").update({ academic_year: toYear }).eq("id", 1);
+      // Update school's academic year - try school_id first, fallback to id=1
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      if (userId) {
+        const { data: profile } = await (supabase.from("profiles") as any).select("school_id").eq("id", userId).maybeSingle();
+        if (profile?.school_id) {
+          await (supabase.from("school_settings") as any).update({ academic_year: toYear }).eq("school_id", profile.school_id);
+        } else {
+          await supabase.from("school_settings").update({ academic_year: toYear }).eq("id", 1);
+        }
+      }
       toast.success(`Rollover complete: ${count} students moved to ${toYear}.`);
       if (mode === "no-history") toast.warning("History wasn't saved — run supabase/academic-progression.sql to enable it.");
       void qc.invalidateQueries({ queryKey: ["students"] });

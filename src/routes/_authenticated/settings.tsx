@@ -50,13 +50,23 @@ function useCanManageSchool() {
   return role === "school_leader" || role === "system_admin";
 }
 
-async function saveSchool(patch: Partial<SchoolSettings>) {
-  const { error } = await (supabase.from("school_settings" as never) as any).update(patch).eq("id", 1);
+async function saveSchool(patch: Partial<SchoolSettings>, schoolId: string | null) {
+  if (!schoolId) {
+    // Fallback: update by id=1 if schoolId not available (pre-migration)
+    const { error } = await (supabase.from("school_settings" as never) as any).update(patch).eq("id", 1);
+    if (error) throw error;
+    return;
+  }
+
+  // Update by school_id (multi-tenant mode)
+  const { error } = await (supabase.from("school_settings" as never) as any)
+    .update(patch)
+    .eq("school_id" as never, schoolId);
   if (error) throw error;
 }
 
 function ProfileTab() {
-  const { profile, refresh } = useAuth();
+  const { profile, refresh, schoolId } = useAuth();
   const { data: school } = useSchoolSettings();
   const qc = useQueryClient();
   const canManage = useCanManageSchool();
@@ -89,9 +99,9 @@ function ProfileTab() {
   async function onLogo(file?: File) {
     if (!file) return;
     try {
-      await saveSchool({ logo_url: await fileToResizedDataUrl(file) });
+      await saveSchool({ logo_url: await fileToResizedDataUrl(file) }, schoolId);
       toast.success("School logo updated");
-      void qc.invalidateQueries({ queryKey: ["school-settings"] });
+      void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
     } catch (e) { toast.error((e as Error).message); }
   }
 
@@ -192,6 +202,7 @@ function AppearanceTab() {
 
 function SystemTab() {
   const { data } = useSchoolSettings();
+  const { schoolId } = useAuth();
   const qc = useQueryClient();
   const canManage = useCanManageSchool();
   const [f, setF] = useState<SchoolSettings>(DEFAULT_SETTINGS);
@@ -217,9 +228,9 @@ function SystemTab() {
         critical_threshold: f.critical_threshold,
         warning_threshold: f.warning_threshold,
         notify_on_threshold: f.notify_on_threshold,
-      });
+      }, schoolId);
       toast.success("System preferences saved");
-      void qc.invalidateQueries({ queryKey: ["school-settings"] });
+      void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
     } catch (e) { toast.error((e as Error).message); }
     setBusy(false);
   }

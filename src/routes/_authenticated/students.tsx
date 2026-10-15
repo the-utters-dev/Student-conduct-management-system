@@ -64,7 +64,7 @@ function initials(name: string) {
 }
 
 function StudentsPage() {
-  const { role, isDisciplineStaff } = useAuth();
+  const { role, isDisciplineStaff, schoolId } = useAuth();
   const { data: school } = useSchoolSettings();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -165,7 +165,7 @@ function StudentsPage() {
             </div>
             <select aria-label="Filter by level" value={level} onChange={(e) => { setLevel(e.target.value); setPage(1); }} className={selectCls}>
               <option value="">All levels</option>
-              {CLASS_LEVELS.map((l) => <option key={l}>{l}</option>)}
+              {(school?.class_levels ?? CLASS_LEVELS).map((l) => <option key={l}>{l}</option>)}
             </select>
             <select aria-label="Filter by stream" value={stream} onChange={(e) => { setStream(e.target.value); setPage(1); }} className={selectCls}>
               <option value="">All streams</option>

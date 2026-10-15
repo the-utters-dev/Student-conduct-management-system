@@ -70,7 +70,16 @@ export function PromotionDialog({
         if (error) throw error;
       }
       // Advance the school's academic year (leaders/admins only; ignore if not permitted).
-      await supabase.from("school_settings").update({ academic_year: newYear }).eq("id", 1);
+      // Try school_id first, fallback to id=1 for backwards compatibility
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      if (userId) {
+        const { data: profile } = await (supabase.from("profiles") as any).select("school_id").eq("id", userId).maybeSingle();
+        if (profile?.school_id) {
+          await (supabase.from("school_settings") as any).update({ academic_year: newYear }).eq("school_id", profile.school_id);
+        } else {
+          await supabase.from("school_settings").update({ academic_year: newYear }).eq("id", 1);
+        }
+      }
     },
     onSuccess: () => {
       toast.success(
