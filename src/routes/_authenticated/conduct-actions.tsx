@@ -80,7 +80,8 @@ function todayISO() {
 }
 
 function ConductActionsPage() {
-  const { isDisciplineStaff, user } = useAuth();
+  const { isDisciplineStaff, user, schoolId, school } = useAuth();
+  const { data: schoolSettings } = useSchoolSettings();
   const queryClient = useQueryClient();
 
   const [studentId, setStudentId] = useState("");
@@ -92,6 +93,9 @@ function ConductActionsPage() {
   const [occurredOn, setOccurredOn] = useState(todayISO());
   const [reason, setReason] = useState("");
   const [notifyParent, setNotifyParent] = useState(true);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidenceKey, setEvidenceKey] = useState(0);
+  const [composer, setComposer] = useState<ComposerEntry | null>(null);
 
   const studentsQuery = useQuery({
     queryKey: ["students", "active", schoolId],
@@ -129,6 +133,19 @@ function ConductActionsPage() {
         .maybeSingle();
       if (error) throw error;
       return data;
+    },
+  });
+
+  const recentQuery = useQuery({
+    queryKey: ["conduct-logs", "recent", schoolId],
+    queryFn: async () => {
+      const res = await db
+        .from("conduct_logs")
+        .select("id, student_id, entry_type, marks, reason, occurred_on, evidence_url, offense:offenses_catalog(title), student:students(full_name, admission_no, class_name, parent_phone)")
+        .order("created_at", { ascending: false })
+        .limit(12);
+      if (res.error) throw res.error;
+      return (res.data ?? []) as unknown as RecentEntry[];
     },
   });
 
