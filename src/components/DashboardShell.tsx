@@ -14,14 +14,23 @@ const NAV_ITEMS = [
   { label: "Reports", to: "/reports", letter: "R", disciplineOnly: false },
   { label: "Audit Logs", to: "/audit-logs", letter: "L", disciplineOnly: false },
   { label: "Settings", to: "/settings", letter: "⚙", disciplineOnly: false },
-] as const;
+  { label: "Platform", to: "/platform", letter: "P", disciplineOnly: false, adminOnly: true },
+] as {
+  label: string;
+  to: "/" | "/students" | "/conduct-actions" | "/reports" | "/audit-logs" | "/settings" | "/platform";
+  letter: string;
+  disciplineOnly: boolean;
+  adminOnly?: boolean;
+}[];
+
+type NavItem = (typeof NAV_ITEMS)[number];
 
 function SidebarLink({
   item,
   active,
   onNavigate,
 }: {
-  item: (typeof NAV_ITEMS)[number];
+  item: NavItem;
   active: boolean;
   onNavigate?: () => void;
 }) {
@@ -68,8 +77,17 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { profile, school: tenantSchool, role, isDisciplineStaff, signOut } = useAuth();
-  const navItems = NAV_ITEMS.filter((i) => !i.disciplineOnly || isDisciplineStaff);
+  const { profile, school: tenantSchool, role, isDisciplineStaff, isPlatformAdmin, tenancyEnabled, schoolId, signOut } = useAuth();
+  const navItems = NAV_ITEMS.filter(
+    (i) => (!i.disciplineOnly || isDisciplineStaff) && (!i.adminOnly || isPlatformAdmin),
+  );
+  const blocked = !isPlatformAdmin && tenancyEnabled && profile
+    ? !schoolId
+      ? "Your account isn't linked to a school yet. Ask your platform administrator to assign you."
+      : tenantSchool && tenantSchool.status !== "active"
+        ? `${tenantSchool.name}'s subscription is ${tenantSchool.status}. Contact your platform administrator to restore access.`
+        : null
+    : null;
   const roleInfo = role ? ROLE_LABELS[role] : null;
   const { data: school } = useSchoolSettings();
   const schoolName = tenantSchool?.name || school?.school_name || "Your School";
@@ -230,7 +248,14 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
             </div>
           </header>
 
-          {children}
+          {blocked ? (
+            <div className="rounded-3xl border border-glass-line bg-glass p-10 shadow-panel backdrop-blur-2xl">
+              <h2 className="font-display text-2xl font-bold text-ink">Access paused</h2>
+              <p className="mt-2 max-w-md text-sm text-soft">{blocked}</p>
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </div>
     </div>

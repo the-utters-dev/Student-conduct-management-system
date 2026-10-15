@@ -123,7 +123,6 @@ BEGIN
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
     -- RESTRICTIVE: combined with (not replacing) every existing role policy.
     EXECUTE format('DROP POLICY IF EXISTS "Same school only" ON public.%I', t);
-    DROP FUNCTION IF EXISTS public.is_platform_admin(UUID);
     EXECUTE format($p$CREATE POLICY "Same school only" ON public.%I AS RESTRICTIVE FOR ALL TO authenticated
       USING (public.is_platform_admin(auth.uid())
              OR (school_id = public.current_school_id() AND public.school_is_active(school_id)))
@@ -144,10 +143,8 @@ DROP POLICY IF EXISTS "Staff can draft notifications" ON public.notification_log
 CREATE POLICY "Staff can draft notifications" ON public.notification_logs
   FOR INSERT TO authenticated WITH CHECK (public.is_staff(auth.uid()) AND status = 'draft');
 
--- 7. Evidence storage (public bucket, files under <school_id>/...) ---------------
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('conduct-evidence', 'conduct-evidence', true)
-ON CONFLICT (id) DO NOTHING;
+-- 7. Evidence storage (private bucket, files under <school_id>/...) ---------------
+-- Bucket itself is created separately (private, id conduct-evidence).
 
 DROP POLICY IF EXISTS "Staff upload evidence for their school" ON storage.objects;
 CREATE POLICY "Staff upload evidence for their school" ON storage.objects
