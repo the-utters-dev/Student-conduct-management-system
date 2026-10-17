@@ -10,7 +10,25 @@ import type { Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export type AppRole = "discipline_admin" | "school_leader" | "system_admin";
+export type AppRole =
+  | "school_director"
+  | "master_of_discipline"
+  | "matron"
+  | "patron"
+  | "system_admin"
+  // Legacy roles (kept for backwards compatibility during migration)
+  | "school_leader"
+  | "discipline_admin";
+
+export type GenderScope = "Female" | "Male" | null;
+
+export type PermissionKey =
+  | "delete_students"
+  | "manage_offences"
+  | "view_audit_logs"
+  | "view_reports"
+  | "message_parents"
+  | "send_photos";
 
 export interface StaffProfile {
   id: string;
@@ -28,26 +46,41 @@ export interface TenantSchool {
   status: string;
 }
 
+export interface SchoolSettings {
+  role_titles?: Record<string, string>;
+  permissions?: Record<string, Record<PermissionKey, boolean>>;
+}
+
 interface AuthState {
   loading: boolean;
   session: Session | null;
   user: User | null;
   profile: StaffProfile | null;
   role: AppRole | null;
+  scope: GenderScope;
   isDisciplineStaff: boolean;
   isPlatformAdmin: boolean;
+  isSchoolDirector: boolean;
   /** False until the multi-tenant SQL script has been run. */
   tenancyEnabled: boolean;
   schoolId: string | null;
   school: TenantSchool | null;
+  settings: SchoolSettings | null;
+  can: (permission: PermissionKey) => boolean;
+  roleLabel: (role: AppRole) => string;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
-export const ROLE_LABELS: Record<AppRole, { label: string; badge: string }> = {
-  discipline_admin: { label: "Matron / Patron", badge: "Discipline" },
-  school_leader: { label: "School Leader", badge: "Leader" },
-  system_admin: { label: "System Administrator", badge: "Admin" },
+const DEFAULT_ROLE_LABELS: Record<AppRole, string> = {
+  school_director: "School Director",
+  master_of_discipline: "Master of Discipline",
+  matron: "Matron",
+  patron: "Patron",
+  system_admin: "Platform Owner",
+  // Legacy
+  school_leader: "School Director",
+  discipline_admin: "Discipline Administrator",
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -60,12 +93,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [tenancyEnabled, setTenancyEnabled] = useState(false);
   const [school, setSchool] = useState<TenantSchool | null>(null);
+  const [settings, setSettings] = useState<SchoolSettings | null>(null);
+  const [allRoles, setAllRoles] = useState<AppRole[]>([]);
 
   async function loadIdentity(userId: string | undefined) {
     if (!userId) {
       setProfile(null);
       setRole(null);
       setSchool(null);
+      setSettings(null);
+      setAllRoles([]);
       return;
     }
     const db = supabase as unknown as SupabaseClient;
@@ -82,18 +119,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setTenancyEnabled(hasTenancy);
     setProfile(profileRow);
+
+    // Load school and settings
     if (hasTenancy && profileRow?.school_id) {
-      const { data: s } = await db
-        .from("schools")
-        .select("id, name, plan, status")
-        .eq("id", profileRow.school_id)
-        .maybeSingle();
-      setSchool((s as TenantSchool | null) ?? null);
+      const [schoolRes, settingsRes] = await Promise.all([
+        db.from("schools").select("id, name, plan, status").eq("id", profileRow.school_id).maybeSingle(),
+        db.from("school_settings").select("role_titles, permissions").eq("school_id", profileRow.school_id).maybeSingle(),
+      ]);
+      setSchool((schoolRes.data as TenantSchool | null) ?? null);
+      setSettings((settingsRes.data as SchoolSettings | null) ?? null);
     } else {
       setSchool(null);
+      setSettings(null);
     }
+
     const roles = (roleRows ?? []).map((r) => r.role as AppRole);
-    const preferred: AppRole[] = ["system_admin", "discipline_admin", "school_leader"];
+    setAllRoles(roles);
+
+    // Prefer new roles, fall back to legacy
+    const preferred: AppRole[] = [
+      "system_admin",
+      "school_director",
+      "master_of_discipline",
+      "matron",
+      "patron",
+      "school_leader",
+      "discipline_admin",
+    ];
     setRole(preferred.find((r) => roles.includes(r)) ?? null);
   }
 
@@ -127,6 +179,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Calculate gender scope based on roles
+  const scope = useMemo<GenderScope>(() => {
+    if (!role) return null;
+    // Matron only (no other discipline roles)
+    if (
+      allRoles.includes("matron") &&
+      !allRoles.some((r) =>
+        ["master_of_discipline", "patron", "school_director", "system_admin", "school_leader"].includes(r)
+      )
+    ) {
+      return "Female";
+    }
+    // Patron only (no other discipline roles)
+    if (
+      allRoles.includes("patron") &&
+      !allRoles.some((r) =>
+        ["master_of_discipline", "matron", "school_director", "system_admin", "school_leader"].includes(r)
+      )
+    ) {
+      return "Male";
+    }
+    return null;
+  }, [role, allRoles]);
+
   const value = useMemo<AuthState>(
     () => ({
       loading,
@@ -134,17 +210,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       profile,
       role,
-      isDisciplineStaff: role === "discipline_admin" || role === "system_admin",
+      scope,
+      isDisciplineStaff:
+        role === "master_of_discipline" ||
+        role === "matron" ||
+        role === "patron" ||
+        role === "school_director" ||
+        role === "system_admin" ||
+        role === "discipline_admin" ||
+        role === "school_leader",
       isPlatformAdmin: role === "system_admin",
+      isSchoolDirector: role === "school_director" || role === "school_leader",
       tenancyEnabled,
       schoolId: profile?.school_id ?? null,
       school,
+      settings,
+      can: (permission: PermissionKey) => {
+        // Platform admin and school director always have all permissions
+        if (role === "system_admin" || role === "school_director" || role === "school_leader") {
+          return true;
+        }
+        // Check permissions from settings
+        if (!settings?.permissions || !role) return false;
+        const rolePerms = settings.permissions[role];
+        if (!rolePerms) return false;
+        return rolePerms[permission] ?? false;
+      },
+      roleLabel: (r: AppRole) => {
+        // Use custom label from school settings if available
+        if (settings?.role_titles?.[r]) {
+          return settings.role_titles[r];
+        }
+        // Fall back to default
+        return DEFAULT_ROLE_LABELS[r] || r;
+      },
       signOut: async () => {
         await supabase.auth.signOut();
         setProfile(null);
         setRole(null);
         setSession(null);
         setSchool(null);
+        setSettings(null);
+        setAllRoles([]);
         // Clear all cached queries to prevent cross-school data leakage
         queryClient.clear();
       },
@@ -154,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await loadIdentity(data.session?.user.id);
       },
     }),
-    [loading, session, profile, role, tenancyEnabled, school],
+    [loading, session, profile, role, scope, tenancyEnabled, school, settings, allRoles],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

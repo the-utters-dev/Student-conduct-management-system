@@ -355,7 +355,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM public.offenses_catalog WHERE school_id = school_rec.id) THEN
       INSERT INTO public.offenses_catalog (school_id, code, title, category, severity, marks_deducted, is_active)
       SELECT school_rec.id, code, title, category, severity, marks_deducted, is_active
-      FROM public.offenses_catalog
+      FROM public.offenses_catalogy
       WHERE school_id = default_school_id
       ON CONFLICT (school_id, code) DO NOTHING;
     END IF;

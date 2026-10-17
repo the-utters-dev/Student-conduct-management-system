@@ -6,7 +6,7 @@ import { DashboardShell } from "@/components/DashboardShell";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
-import { useAuth, ROLE_LABELS, type AppRole } from "@/hooks/useAuth";
+import { useAuth, type AppRole } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/_authenticated/audit-logs")({
   head: () => ({
@@ -46,8 +46,8 @@ const FILTERS: Record<string, { label: string; match: (a: string) => boolean }> 
 };
 
 function AuditLogsPage() {
-  const { role, loading } = useAuth();
-  const allowed = role === "school_leader" || role === "system_admin";
+  const { can, loading } = useAuth();
+  const allowed = can("view_audit_logs");
 
   return (
     <DashboardShell greeting="Audit Logs" dateLine="Compliance trail · newest first">
@@ -57,8 +57,8 @@ function AuditLogsPage() {
         <div className="rounded-3xl border border-glass-line bg-glass p-10 shadow-panel backdrop-blur-2xl">
           <h2 className="font-display text-2xl font-bold text-ink">Permission required</h2>
           <p className="mt-2 max-w-md text-sm text-soft">
-            The full audit trail is available to School Leaders and System Administrators only.
-            Matrons and Patrons can keep recording conduct entries — each one is still logged here.
+            The full audit trail is available to School Directors, Masters of Discipline, and Platform Owners.
+            Your role does not have permission to view audit logs. Contact your School Director to request access.
           </p>
         </div>
       )}
@@ -184,7 +184,7 @@ function AuditViewer() {
                 <Field k="Name" v={sel?.full_name || "Unknown"} />
                 <Field k="Email" v={sel?.email ?? "—"} />
                 <Field k="Title" v={sel?.job_title ?? "—"} />
-                <Field k="Role" v={sel?.roles.map((r) => ROLE_LABELS[r].label).join(", ") || "—"} />
+                <Field k="Roles" v={sel?.roles.join(", ") || "—"} />
                 <Field k="User ID" v={selected.user_id ?? "—"} mono />
               </Section>
               <Section title="Target entity">

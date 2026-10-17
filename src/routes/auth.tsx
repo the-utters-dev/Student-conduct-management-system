@@ -31,9 +31,6 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [userRole, setUserRole] = useState<"discipline_admin" | "school_leader">(
-    "discipline_admin",
-  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -72,8 +69,6 @@ function AuthPage() {
         emailRedirectTo: `${window.location.origin}/auth`,
         data: {
           full_name: fullName,
-          user_role: userRole,
-          job_title: userRole === "discipline_admin" ? "Matron / Patron" : "School Leader",
         },
       },
     });
@@ -86,7 +81,7 @@ function AuthPage() {
       navigate({ to: "/" });
       return;
     }
-    setNotice("Account created. Check your email for the confirmation link, then sign in.");
+    setNotice("Account created. Your School Director will assign you a role and school. Check your email for the confirmation link, then sign in.");
     setMode("signin");
   }
 
@@ -116,8 +111,8 @@ function AuthPage() {
           </h1>
           <p className="mt-1 text-[13px] text-soft">
             {mode === "signin"
-              ? "Matrons, patrons and school leaders only."
-              : "Choose the role that matches your duties."}
+              ? "School staff only. Your School Director will assign your role."
+              : "Your School Director will assign you a role and school after you register."}
           </p>
 
           <form onSubmit={submit} className="mt-6 space-y-4">
@@ -166,31 +161,6 @@ function AuthPage() {
                 placeholder="••••••••"
               />
             </div>
-
-            {mode === "signup" && (
-              <div className="grid grid-cols-2 gap-3">
-                {(
-                  [
-                    { value: "discipline_admin", title: "Matron / Patron", note: "Records conduct" },
-                    { value: "school_leader", title: "School Leader", note: "Views & reports" },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setUserRole(opt.value)}
-                    className={
-                      userRole === opt.value
-                        ? "rounded-2xl bg-brand/10 px-3 py-3 text-left ring-1 ring-brand/30"
-                        : "rounded-2xl bg-glass-bright px-3 py-3 text-left ring-1 ring-hairline"
-                    }
-                  >
-                    <div className="text-[13px] font-semibold text-ink">{opt.title}</div>
-                    <div className="text-[11px] text-soft">{opt.note}</div>
-                  </button>
-                ))}
-              </div>
-            )}
 
             {error && (
               <div className="rounded-2xl bg-danger/10 px-4 py-3 text-[12px] font-medium text-danger">

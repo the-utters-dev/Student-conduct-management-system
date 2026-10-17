@@ -1,9 +1,8 @@
-
 import { Link, LinkProps, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { Menu } from "lucide-react";
 import avatar from "@/assets/avatar.png";
-import { ROLE_LABELS, useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useConductStandings } from "@/hooks/useConductStandings";
 
@@ -77,23 +76,32 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { profile, school: tenantSchool, role, isDisciplineStaff, isPlatformAdmin, tenancyEnabled, schoolId, signOut } = useAuth();
+  const { profile, school: tenantSchool, role, scope, isDisciplineStaff, isPlatformAdmin, tenancyEnabled, schoolId, can, roleLabel, signOut } = useAuth();
   const navItems = NAV_ITEMS.filter(
-    (i) => (!i.disciplineOnly || isDisciplineStaff) && (!i.adminOnly || isPlatformAdmin),
+    (i) =>
+      (!i.disciplineOnly || isDisciplineStaff) &&
+      (!i.adminOnly || isPlatformAdmin) &&
+      // Hide audit logs if user doesn't have permission
+      (i.to !== "/audit-logs" || can("view_audit_logs")) &&
+      // Hide reports if user doesn't have permission
+      (i.to !== "/reports" || can("view_reports")),
   );
   const blocked = !isPlatformAdmin && tenancyEnabled && profile
-    ? !schoolId
-      ? "Your account isn't linked to a school yet. Ask your platform administrator to assign you."
-      : tenantSchool && tenantSchool.status !== "active"
-        ? `${tenantSchool.name}'s subscription is ${tenantSchool.status}. Contact your platform administrator to restore access.`
-        : null
+    ? !schoolId && !role
+      ? "Your account is waiting for your school to activate it. A School Director will assign you a role and school."
+      : !schoolId
+        ? "Your account isn't linked to a school yet. Ask your platform administrator to assign you."
+        : tenantSchool && tenantSchool.status !== "active"
+          ? `${tenantSchool.name}'s subscription is ${tenantSchool.status}. Contact your platform administrator to restore access.`
+          : null
     : null;
-  const roleInfo = role ? ROLE_LABELS[role] : null;
+  const roleLabelText = role ? roleLabel(role) : null;
   const { data: school } = useSchoolSettings();
   const schoolName = tenantSchool?.name || school?.school_name || "Your School";
   const { atRisk, criticalCount } = useConductStandings();
   const openCases = atRisk.length;
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
+  const scopeBadge = scope === "Female" ? "Girls" : scope === "Male" ? "Boys" : null;
 
   return (
     <div className="relative min-h-screen overflow-x-clip font-sans text-body antialiased">
@@ -229,11 +237,16 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
               <div className="hidden leading-tight sm:block">
                 <div className="text-[13px] font-semibold text-ink">{displayName}</div>
                 <div className="text-[11px] text-soft">
-                  {profile?.job_title ?? roleInfo?.label ?? "Role pending"}
+                  {profile?.job_title ?? roleLabelText ?? "Role pending"}
                 </div>
               </div>
+              {scopeBadge && (
+                <span className="hidden rounded-lg bg-accent/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-accent ring-1 ring-accent/20 sm:inline">
+                  {scopeBadge}
+                </span>
+              )}
               <span className="hidden rounded-lg bg-brand/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-brand ring-1 ring-brand/20 sm:inline">
-                {roleInfo?.badge ?? "Staff"}
+                {roleLabelText ?? "Staff"}
               </span>
               <button
                 type="button"

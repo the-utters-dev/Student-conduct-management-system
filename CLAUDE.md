@@ -42,3 +42,11 @@ Owner: Wix (freelance developer). Currency: RWF. Languages: English now; Kinyarw
   Never edit in Lovable and VS Code at the same time without pulling first.
 - Before finishing a task run: npx tsc --noEmit and npm run build, and fix all errors you introduced.
 - End every task with a short summary: files changed, SQL scripts Wix must run (in order), and how to test it manually.
+
+## Final report (required at the end of EVERY task)
+1. What was done: a numbered list of every change, in plain language a non-developer can understand.
+2. Files: every file created, changed or deleted, with one line each on why.
+3. Database: every SQL script to run, in exact order, what each does, and whether it is safe to re-run.
+4. Not done / limitations: anything from the request that was skipped, simplified or left for later, and why.
+5. Manual test checklist: step-by-step checks with the expected result.
+6. Build status: the result of npx tsc --noEmit and npm run build.
