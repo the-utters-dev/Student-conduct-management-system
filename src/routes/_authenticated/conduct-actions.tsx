@@ -80,7 +80,7 @@ function todayISO() {
 }
 
 function ConductActionsPage() {
-  const { isDisciplineStaff, user, schoolId, school } = useAuth();
+  const { isDisciplineStaff, user, schoolId, school, can } = useAuth();
   const { data: schoolSettings } = useSchoolSettings();
   const queryClient = useQueryClient();
 
@@ -479,47 +479,51 @@ function ConductActionsPage() {
               />
             </div>
 
-            <div>
-              <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
-                Attach evidence (photo, optional)
-              </label>
-              <input
-                key={evidenceKey}
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  if (f && (!f.type.startsWith("image/") || f.size > 5 * 1024 * 1024)) {
-                    toast.error("Choose an image smaller than 5 MB.");
-                    e.target.value = "";
-                    return;
-                  }
-                  setEvidenceFile(f);
-                }}
-                className={`${inputClass} file:mr-3 file:rounded-xl file:border-0 file:bg-brand/10 file:px-3 file:py-1 file:text-brand`}
-              />
-            </div>
+            {can("send_photos") && (
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                  Attach evidence (photo, optional)
+                </label>
+                <input
+                  key={evidenceKey}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    if (f && (!f.type.startsWith("image/") || f.size > 5 * 1024 * 1024)) {
+                      toast.error("Choose an image smaller than 5 MB.");
+                      e.target.value = "";
+                      return;
+                    }
+                    setEvidenceFile(f);
+                  }}
+                  className={`${inputClass} file:mr-3 file:rounded-xl file:border-0 file:bg-brand/10 file:px-3 file:py-1 file:text-brand`}
+                />
+              </div>
+            )}
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-glass-bright px-4 py-3 ring-1 ring-hairline">
-              <input
-                type="checkbox"
-                checked={notifyParent}
-                onChange={(e) => setNotifyParent(e.target.checked)}
-                className="mt-0.5 size-4 accent-[var(--color-brand)]"
-              />
-              <span>
-                <span className="block text-[13px] font-semibold text-ink">
-                  Notify parent via SMS
+            {can("message_parents") && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-glass-bright px-4 py-3 ring-1 ring-hairline">
+                <input
+                  type="checkbox"
+                  checked={notifyParent}
+                  onChange={(e) => setNotifyParent(e.target.checked)}
+                  className="mt-0.5 size-4 accent-[var(--color-brand)]"
+                />
+                <span>
+                  <span className="block text-[13px] font-semibold text-ink">
+                    Notify parent via SMS
+                  </span>
+                  <span className="block text-[11px] text-soft">
+                    {selectedStudent
+                      ? selectedStudent.parent_phone
+                        ? `Queues a message to ${selectedStudent.parent_phone}`
+                        : "No parent phone on file for this student"
+                      : "Queues a message to the parent number on file"}
+                  </span>
                 </span>
-                <span className="block text-[11px] text-soft">
-                  {selectedStudent
-                    ? selectedStudent.parent_phone
-                      ? `Queues a message to ${selectedStudent.parent_phone}`
-                      : "No parent phone on file for this student"
-                    : "Queues a message to the parent number on file"}
-                </span>
-              </span>
-            </label>
+              </label>
+            )}
 
 
             <button

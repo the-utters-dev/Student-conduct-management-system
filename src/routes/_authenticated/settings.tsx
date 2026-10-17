@@ -1,14 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, type AppRole, type PermissionKey } from "@/hooks/useAuth";
 import { useSchoolSettings, DEFAULT_SETTINGS, type SchoolSettings } from "@/hooks/useSchoolSettings";
 import { ACCENTS, useTheme, type AccentKey } from "@/hooks/useTheme";
 import { fileToResizedDataUrl } from "@/lib/image";
+import {
+  listSchoolStaff,
+  inviteSchoolStaff,
+  updateStaffRole,
+  setStaffActive,
+  SCHOOL_ROLES,
+  type SchoolRole,
+  type SchoolStaffMember,
+} from "@/lib/school.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -29,17 +38,20 @@ const inp = "w-full rounded-xl border border-input bg-background px-3 py-2 text-
 const btn = "rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand shadow-brand-glow disabled:opacity-60";
 
 function SettingsPage() {
+  const { isSchoolDirector } = useAuth();
   return (
     <DashboardShell greeting="Settings" dateLine="Profile, appearance & system preferences">
       <Tabs defaultValue="profile">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="profile">Profile & Avatar</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="system">System Preferences</TabsTrigger>
+          {isSchoolDirector && <TabsTrigger value="staff">Staff & Roles</TabsTrigger>}
         </TabsList>
         <TabsContent value="profile"><ProfileTab /></TabsContent>
         <TabsContent value="appearance"><AppearanceTab /></TabsContent>
         <TabsContent value="system"><SystemTab /></TabsContent>
+        {isSchoolDirector && <TabsContent value="staff"><StaffTab /></TabsContent>}
       </Tabs>
     </DashboardShell>
   );
@@ -253,5 +265,333 @@ function SystemTab() {
         <button className={btn} disabled={busy}>Save preferences</button>
       </fieldset>
     </form>
+  );
+}
+
+const ROLE_LABELS: Record<SchoolRole, string> = {
+  school_director: "School Director",
+  master_of_discipline: "Master of Discipline",
+  matron: "Matron",
+  patron: "Patron",
+};
+
+const PERMISSION_LABELS: Record<PermissionKey, string> = {
+  delete_students: "Delete students",
+  manage_offences: "Manage offence catalogue",
+  view_audit_logs: "View audit logs",
+  view_reports: "View reports",
+  message_parents: "Message parents",
+  send_photos: "Send evidence photos",
+};
+
+const PERMISSION_ROLES: SchoolRole[] = ["master_of_discipline", "matron", "patron"];
+
+function StaffTab() {
+  const { schoolId, roleLabel } = useAuth();
+  const qc = useQueryClient();
+  const { data: settings } = useSchoolSettings();
+
+  // Staff list
+  const { data: staff, isLoading } = useQuery({
+    queryKey: ["school-staff", schoolId],
+    queryFn: async () => await listSchoolStaff(),
+    enabled: !!schoolId,
+  });
+
+  // Mutations
+  const inviteMutation = useMutation({
+    mutationFn: inviteSchoolStaff,
+    onSuccess: () => {
+      toast.success("Staff member invited successfully");
+      void qc.invalidateQueries({ queryKey: ["school-staff", schoolId] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const updateRoleMutation = useMutation({
+    mutationFn: updateStaffRole,
+    onSuccess: () => {
+      toast.success("Role updated successfully");
+      void qc.invalidateQueries({ queryKey: ["school-staff", schoolId] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: setStaffActive,
+    onSuccess: () => {
+      toast.success("Staff status updated");
+      void qc.invalidateQueries({ queryKey: ["school-staff", schoolId] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  // Form state
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRole, setInviteRole] = useState<SchoolRole>("matron");
+
+  // Role titles state
+  const [roleTitles, setRoleTitles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (settings?.role_titles) {
+      setRoleTitles(settings.role_titles);
+    }
+  }, [settings]);
+
+  // Permissions state
+  const [permissions, setPermissions] = useState<Record<string, Record<PermissionKey, boolean>>>({});
+  useEffect(() => {
+    if (settings?.permissions) {
+      setPermissions(settings.permissions);
+    } else {
+      // Default permissions
+      setPermissions({
+        master_of_discipline: {
+          delete_students: true,
+          manage_offences: true,
+          view_audit_logs: true,
+          view_reports: true,
+          message_parents: true,
+          send_photos: true,
+        },
+        matron: {
+          delete_students: false,
+          manage_offences: false,
+          view_audit_logs: false,
+          view_reports: true,
+          message_parents: true,
+          send_photos: true,
+        },
+        patron: {
+          delete_students: false,
+          manage_offences: false,
+          view_audit_logs: false,
+          view_reports: true,
+          message_parents: true,
+          send_photos: true,
+        },
+      });
+    }
+  }, [settings]);
+
+  async function handleInvite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail || !inviteName) {
+      toast.error("Email and full name are required");
+      return;
+    }
+    inviteMutation.mutate({ email: inviteEmail, full_name: inviteName, role: inviteRole } as never);
+    setInviteEmail("");
+    setInviteName("");
+    setInviteRole("matron");
+  }
+
+  async function saveRoleTitles() {
+    try {
+      await saveSchool({ role_titles: roleTitles }, schoolId);
+      toast.success("Role titles updated");
+      void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function savePermissions() {
+    try {
+      await saveSchool({ permissions }, schoolId);
+      toast.success("Permissions updated");
+      void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Staff List */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Staff Members</h3>
+        {isLoading ? (
+          <p className="mt-4 text-sm text-soft">Loading staff...</p>
+        ) : !staff || staff.length === 0 ? (
+          <p className="mt-4 text-sm text-soft">No staff members yet. Invite someone below.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {staff.map((member) => (
+              <div
+                key={member.id}
+                className="flex flex-col gap-3 rounded-xl border border-glass-line bg-glass-bright p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-ink">{member.full_name}</p>
+                  <p className="text-xs text-soft">{member.email}</p>
+                  <p className="text-xs text-faint">
+                    {member.roles.map((r) => roleLabel(r as AppRole)).join(", ")}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={member.roles[0] ?? "matron"}
+                    onChange={(e) =>
+                      updateRoleMutation.mutate({ user_id: member.id, role: e.target.value as SchoolRole } as never)
+                    }
+                    className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-ink"
+                    disabled={updateRoleMutation.isPending}
+                  >
+                    {SCHOOL_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {roleLabel(role)}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={member.is_active}
+                      onChange={(e) =>
+                        toggleActiveMutation.mutate({ user_id: member.id, active: e.target.checked } as never)
+                      }
+                      disabled={toggleActiveMutation.isPending}
+                    />
+                    <span className={member.is_active ? "text-ok" : "text-faint"}>
+                      {member.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Invite Staff */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Invite Staff</h3>
+        <form onSubmit={handleInvite} className="mt-4 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-semibold text-soft">
+              Email
+              <input
+                type="email"
+                className={`${inp} mt-1`}
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="staff@example.com"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-soft">
+              Full name
+              <input
+                type="text"
+                className={`${inp} mt-1`}
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                placeholder="Full Name"
+              />
+            </label>
+          </div>
+          <label className="block text-xs font-semibold text-soft">
+            Role
+            <select
+              className={`${inp} mt-1`}
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value as SchoolRole)}
+            >
+              {SCHOOL_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {ROLE_LABELS[role]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className={btn} disabled={inviteMutation.isPending}>
+            {inviteMutation.isPending ? "Sending invitation..." : "Send invitation"}
+          </button>
+        </form>
+      </div>
+
+      {/* Role Titles */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Custom Role Titles</h3>
+        <p className="mt-2 text-xs text-soft">
+          Customize how role names appear throughout the system. Leave blank to use defaults.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {SCHOOL_ROLES.map((role) => (
+            <label key={role} className="block text-xs font-semibold text-soft">
+              {ROLE_LABELS[role]}
+              <input
+                type="text"
+                className={`${inp} mt-1`}
+                value={roleTitles[role] ?? ""}
+                onChange={(e) => setRoleTitles({ ...roleTitles, [role]: e.target.value })}
+                placeholder={ROLE_LABELS[role]}
+              />
+            </label>
+          ))}
+        </div>
+        <button onClick={saveRoleTitles} className={`${btn} mt-4`}>
+          Save role titles
+        </button>
+      </div>
+
+      {/* Permissions */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Role Permissions</h3>
+        <p className="mt-2 text-xs text-soft">
+          School Directors always have all permissions. Configure permissions for other roles below.
+        </p>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[600px] text-sm">
+            <thead>
+              <tr className="border-b border-glass-line">
+                <th className="pb-2 pr-4 text-left text-xs font-semibold text-soft">Permission</th>
+                {PERMISSION_ROLES.map((role) => (
+                  <th key={role} className="pb-2 px-2 text-center text-xs font-semibold text-soft">
+                    {roleLabel(role)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(Object.keys(PERMISSION_LABELS) as PermissionKey[]).map((permission) => (
+                <tr key={permission} className="border-b border-glass-line/50">
+                  <td className="py-3 pr-4 text-xs text-ink">{PERMISSION_LABELS[permission]}</td>
+                  {PERMISSION_ROLES.map((role) => (
+                    <td key={role} className="py-3 px-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={permissions[role]?.[permission] ?? false}
+                        onChange={(e) => {
+                          const newPerms = {
+                            ...permissions,
+                            [role]: {
+                              ...((permissions[role] ?? {}) as Record<PermissionKey, boolean>),
+                              [permission]: e.target.checked,
+                            } as Record<PermissionKey, boolean>,
+                          };
+                          setPermissions(newPerms);
+                        }}
+                        className="cursor-pointer"
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={savePermissions} className={`${btn} mt-4`}>
+          Save permissions
+        </button>
+      </div>
+    </div>
   );
 }

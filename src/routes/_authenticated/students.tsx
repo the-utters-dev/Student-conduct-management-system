@@ -64,7 +64,7 @@ function initials(name: string) {
 }
 
 function StudentsPage() {
-  const { role, isDisciplineStaff, schoolId } = useAuth();
+  const { role, isDisciplineStaff, schoolId, can, isSchoolDirector } = useAuth();
   const { data: school } = useSchoolSettings();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -75,9 +75,9 @@ function StudentsPage() {
   const [adding, setAdding] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [rollingOver, setRollingOver] = useState(false);
-  const canRollover = role === "school_leader" || role === "system_admin";
+  const canRollover = isSchoolDirector || role === "system_admin";
   const [toDelete, setToDelete] = useState<StudentRow | null>(null);
-  const canDelete = role !== null;
+  const canDelete = can("delete_students");
 
   const { data, isPending, error } = useQuery({
     queryKey: ["students"],
@@ -123,6 +123,8 @@ function StudentsPage() {
       if (stream && streamOf(s) !== stream) return false;
       const st = statusOf(s);
       if (statusFilter === "current" ? st !== "active" && st !== "repeating" : statusFilter && st !== statusFilter) return false;
+      // "Missing sex" filter
+      if (statusFilter === "missing_sex" && s.gender) return false;
       if (!q) return true;
       if (qDigits.length >= 3 && (s.parent_phone ?? "").replace(/\D/g, "").includes(qDigits)) return true;
       return [s.full_name, s.admission_no, s.class_name, s.parent_name, s.father_name, s.mother_name, s.guardian_email].some(
@@ -176,6 +178,7 @@ function StudentsPage() {
               <option value="active">Active</option>
               <option value="repeating">Repeating</option>
               <option value="graduated">Graduated / Alumni</option>
+              <option value="missing_sex">Missing sex</option>
               <option value="">All statuses</option>
             </select>
             {role && (
@@ -256,7 +259,14 @@ function StudentsPage() {
                         {initials(s.full_name)}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-ink">{s.full_name}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] font-semibold text-ink">{s.full_name}</span>
+                          {!s.gender && (
+                            <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-warn">
+                              Sex not recorded
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-soft">
                           {[s.gender, s.date_of_birth && new Date(s.date_of_birth).toLocaleDateString("en-GB")]
                             .filter(Boolean)

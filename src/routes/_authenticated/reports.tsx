@@ -72,9 +72,25 @@ function csvCell(v: unknown) {
 function ReportsPage() {
   const [historyFor, setHistoryFor] = useState<Balance | null>(null);
   const { data: school } = useSchoolSettings();
-  const { schoolId } = useAuth();
+  const { schoolId, can } = useAuth();
   const criticalThreshold = school?.critical_threshold ?? 20;
   const warningThreshold = school?.warning_threshold ?? 30;
+
+  // Check permission
+  if (!can("view_reports")) {
+    return (
+      <DashboardShell greeting="Reports" dateLine="Conduct trends and analytics">
+        <div className="rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
+          <div className="py-12 text-center">
+            <h3 className="font-display text-lg font-bold text-ink">Access not permitted</h3>
+            <p className="mt-2 text-sm text-soft">
+              Your role does not have permission to view reports. Contact your School Director to adjust permissions.
+            </p>
+          </div>
+        </div>
+      </DashboardShell>
+    );
+  }
 
   const balancesQ = useQuery({
     queryKey: ["student-balances", schoolId],

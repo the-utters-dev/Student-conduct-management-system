@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "./useAuth";
+import { useAuth, type PermissionKey } from "./useAuth";
 
 export interface SchoolSettings {
   school_name: string;
@@ -13,6 +13,8 @@ export interface SchoolSettings {
   is_boarding?: boolean;
   max_conduct_marks?: number;
   class_levels?: string[];
+  role_titles?: Record<string, string>;
+  permissions?: Record<string, Record<PermissionKey, boolean>>;
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
