@@ -4,7 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export const PLANS = ["trial", "basic", "pro", "enterprise"] as const;
 export const SCHOOL_STATUSES = ["active", "suspended", "cancelled"] as const;
-export const STAFF_ROLES = ["discipline_admin", "school_leader"] as const;
+export const STAFF_ROLES = ["school_director", "master_of_discipline", "matron", "patron", "discipline_admin", "school_leader"] as const;
 export type Plan = (typeof PLANS)[number];
 export type SchoolStatus = (typeof SCHOOL_STATUSES)[number];
 export type StaffRole = (typeof STAFF_ROLES)[number];
@@ -14,11 +14,15 @@ export interface PlatformSchool {
   name: string;
   plan: Plan;
   status: SchoolStatus;
+  status_reason: string | null;
+  status_changed_at: string | null;
+  status_changed_by: string | null;
   trial_ends_at: string | null;
   student_limit: number | null;
   created_at: string;
   staff_count: number;
   student_count: number;
+  last_activity: string | null;
 }
 
 export interface PlatformStaff {
@@ -52,26 +56,42 @@ export const getPlatformOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const admin = await adminFor(context as never);
-    const [schoolsRes, profilesRes, rolesRes, studentsRes] = await Promise.all([
+    const [schoolsRes, profilesRes, rolesRes, studentsRes, conductsRes] = await Promise.all([
       admin.from("schools").select("*").order("created_at"),
       admin.from("profiles").select("id, full_name, email, school_id").order("full_name"),
       admin.from("user_roles").select("user_id, role"),
       admin.from("students").select("school_id"),
+      admin.from("conduct_logs").select("school_id, created_at").order("created_at", { ascending: false }),
     ]);
     const err = missingSetup(schoolsRes.error ?? profilesRes.error ?? studentsRes.error);
     if (err) throw err;
+
+    // Build roles map
     const roles = new Map<string, string[]>();
     (rolesRes.data ?? []).forEach((r) => roles.set(r.user_id, [...(roles.get(r.user_id) ?? []), r.role]));
+
+    // Build staff list (exclude system_admin from school staff counts)
     const staff: PlatformStaff[] = (profilesRes.data ?? []).map((p) => ({
       ...p,
       roles: roles.get(p.id) ?? [],
     }));
+
     const count = (rows: { school_id: string | null }[], id: string) =>
       rows.filter((r) => r.school_id === id).length;
+
+    // Calculate last activity per school (most recent conduct entry)
+    const lastActivity = new Map<string, string>();
+    (conductsRes.data ?? []).forEach((c) => {
+      if (c.school_id && !lastActivity.has(c.school_id)) {
+        lastActivity.set(c.school_id, c.created_at);
+      }
+    });
+
     const schools: PlatformSchool[] = (schoolsRes.data ?? []).map((s) => ({
       ...s,
-      staff_count: count(staff, s.id),
+      staff_count: staff.filter((p) => p.school_id === s.id && !p.roles.includes("system_admin")).length,
       student_count: count(studentsRes.data ?? [], s.id),
+      last_activity: lastActivity.get(s.id) ?? null,
     }));
     return { schools, staff };
   });
@@ -185,4 +205,252 @@ export const inviteStaff = createServerFn({ method: "POST" })
     if (err) throw err;
     await setStaffRole(admin, userId, data.role);
     return { id: userId };
+  });
+
+/**
+ * Renames a school.
+ * Only platform admins can rename schools.
+ */
+export const renameSchool = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string; name: string }) => {
+    if (!UUID.test(d.id)) throw new Error("Invalid school ID.");
+    const name = String(d.name ?? "").trim();
+    if (name.length < 2 || name.length > 120) throw new Error("School name must be 2–120 characters.");
+    return { id: d.id, name };
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+    const { error } = await admin.from("schools").update({ name: data.name }).eq("id", data.id);
+    if (error) throw new Error(error.message);
+    await admin.from("audit_logs").insert({
+      user_id: (context as { userId: string }).userId,
+      action: "RENAME_SCHOOL",
+      entity_type: "school",
+      entity_id: data.id,
+      payload: { new_name: data.name },
+      school_id: data.id,
+    });
+    return { ok: true };
+  });
+
+/**
+ * Updates school status with a required reason for suspension/cancellation.
+ * Only platform admins can change school status.
+ */
+export const updateSchoolStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string; status: SchoolStatus; reason: string }) => {
+    if (!UUID.test(d.id)) throw new Error("Invalid school ID.");
+    if (!SCHOOL_STATUSES.includes(d.status)) throw new Error("Unknown status.");
+    const reason = String(d.reason ?? "").trim();
+    if ((d.status === "suspended" || d.status === "cancelled") && reason.length < 3) {
+      throw new Error("Please provide a reason for suspension or cancellation.");
+    }
+    return { id: d.id, status: d.status, reason };
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+    const userId = (context as { userId: string }).userId;
+
+    // Update school with status, reason, and tracking fields
+    const { error } = await admin
+      .from("schools")
+      .update({
+        status: data.status,
+        status_reason: data.reason,
+        status_changed_at: new Date().toISOString(),
+        status_changed_by: userId,
+      })
+      .eq("id", data.id);
+
+    if (error) throw new Error(error.message);
+
+    // Audit log (the trigger will also log, but this gives us more control over the message)
+    await admin.from("audit_logs").insert({
+      user_id: userId,
+      action: "UPDATE_SCHOOL_STATUS",
+      entity_type: "school",
+      entity_id: data.id,
+      payload: { new_status: data.status, reason: data.reason },
+      school_id: data.id,
+    });
+
+    return { ok: true };
+  });
+
+/**
+ * Permanently deletes a school and all its data.
+ * Only allowed when school status is "cancelled".
+ * Cannot delete the default school (00000000-0000-0000-0000-000000000001).
+ */
+export const deleteSchool = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string; name_confirmation: string }) => {
+    if (!UUID.test(d.id)) throw new Error("Invalid school ID.");
+    if (d.id === "00000000-0000-0000-0000-000000000001") {
+      throw new Error("Cannot delete the default school.");
+    }
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+    const userId = (context as { userId: string }).userId;
+
+    // Get school details
+    const { data: school, error: schoolError } = await admin
+      .from("schools")
+      .select("id, name, status")
+      .eq("id", data.id)
+      .maybeSingle();
+
+    if (schoolError || !school) throw new Error("School not found.");
+
+    // Verify status is cancelled
+    if (school.status !== "cancelled") {
+      throw new Error("School must be cancelled before deletion. Change status to 'cancelled' first.");
+    }
+
+    // Verify name confirmation
+    if (school.name !== data.name_confirmation) {
+      throw new Error(`School name confirmation does not match. Type "${school.name}" exactly.`);
+    }
+
+    // Count rows for audit log
+    const counts: Record<string, number> = {};
+    const tables = [
+      "students",
+      "conduct_logs",
+      "notification_logs",
+      "student_academic_history",
+      "good_deed_categories",
+      "offenses_catalog",
+      "academic_terms",
+      "school_settings",
+      "audit_logs",
+    ];
+
+    for (const table of tables) {
+      const { count } = await admin.from(table).select("*", { count: "exact", head: true }).eq("school_id", data.id);
+      counts[table] = count ?? 0;
+    }
+
+    // Delete storage files under this school's folder
+    const { data: files } = await admin.storage.from("conduct-evidence").list(data.id);
+    if (files && files.length > 0) {
+      const filePaths = files.map((f) => `${data.id}/${f.name}`);
+      await admin.storage.from("conduct-evidence").remove(filePaths);
+    }
+
+    // Delete database records in correct order (respecting foreign key constraints)
+    // Note: conduct_log_photos and evidence_links might not exist yet
+    try {
+      await admin.from("conduct_log_photos").delete().eq("school_id", data.id);
+    } catch {
+      // Table might not exist
+    }
+    try {
+      await admin.from("evidence_links").delete().eq("school_id", data.id);
+    } catch {
+      // Table might not exist
+    }
+
+    await admin.from("notification_logs").delete().eq("school_id", data.id);
+    await admin.from("conduct_logs").delete().eq("school_id", data.id);
+    await admin.from("student_academic_history").delete().eq("school_id", data.id);
+    await admin.from("students").delete().eq("school_id", data.id);
+    await admin.from("good_deed_categories").delete().eq("school_id", data.id);
+    await admin.from("offenses_catalog").delete().eq("school_id", data.id);
+    await admin.from("academic_terms").delete().eq("school_id", data.id);
+    await admin.from("school_settings").delete().eq("school_id", data.id);
+    await admin.from("audit_logs").delete().eq("school_id", data.id);
+
+    // Delete staff accounts that belong ONLY to this school (not system_admin)
+    const { data: schoolStaff } = await admin.from("profiles").select("id").eq("school_id", data.id);
+    if (schoolStaff && schoolStaff.length > 0) {
+      const staffIds = schoolStaff.map((s) => s.id);
+
+      // Check which are system_admin
+      const { data: adminRoles } = await admin
+        .from("user_roles")
+        .select("user_id")
+        .in("user_id", staffIds)
+        .eq("role", "system_admin");
+
+      const adminIds = new Set((adminRoles ?? []).map((r) => r.user_id));
+
+      // Delete non-admin accounts
+      for (const staffId of staffIds) {
+        if (!adminIds.has(staffId)) {
+          await admin.auth.admin.deleteUser(staffId);
+        }
+      }
+    }
+
+    // Finally, delete the school row
+    await admin.from("schools").delete().eq("id", data.id);
+
+    // Write platform-level audit log (school_id is NULL since the school is deleted)
+    await admin.from("audit_logs").insert({
+      user_id: userId,
+      action: "DELETE_SCHOOL",
+      entity_type: "school",
+      entity_id: data.id,
+      payload: {
+        school_name: school.name,
+        school_id: data.id,
+        row_counts: counts,
+      },
+      school_id: null,
+    });
+
+    return { ok: true };
+  });
+
+/**
+ * Downloads school data as JSON (for backup before deletion).
+ * Only platform admins can download school data.
+ */
+export const downloadSchoolData = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string }) => {
+    if (!UUID.test(d.id)) throw new Error("Invalid school ID.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+
+    // Get school details
+    const { data: school } = await admin.from("schools").select("*").eq("id", data.id).maybeSingle();
+    if (!school) throw new Error("School not found.");
+
+    // Collect all data
+    const [students, conducts, notifications, history, categories, offenses, terms, settings, audits] = await Promise.all([
+      admin.from("students").select("*").eq("school_id", data.id),
+      admin.from("conduct_logs").select("*").eq("school_id", data.id),
+      admin.from("notification_logs").select("*").eq("school_id", data.id),
+      admin.from("student_academic_history").select("*").eq("school_id", data.id),
+      admin.from("good_deed_categories").select("*").eq("school_id", data.id),
+      admin.from("offenses_catalog").select("*").eq("school_id", data.id),
+      admin.from("academic_terms").select("*").eq("school_id", data.id),
+      admin.from("school_settings").select("*").eq("school_id", data.id),
+      admin.from("audit_logs").select("*").eq("school_id", data.id),
+    ]);
+
+    const backup = {
+      school,
+      students: students.data ?? [],
+      conduct_logs: conducts.data ?? [],
+      notification_logs: notifications.data ?? [],
+      student_academic_history: history.data ?? [],
+      good_deed_categories: categories.data ?? [],
+      offenses_catalog: offenses.data ?? [],
+      academic_terms: terms.data ?? [],
+      school_settings: settings.data ?? [],
+      audit_logs: audits.data ?? [],
+      exported_at: new Date().toISOString(),
+      exported_by: (context as { userId: string }).userId,
+    };
+
+    return backup;
   });

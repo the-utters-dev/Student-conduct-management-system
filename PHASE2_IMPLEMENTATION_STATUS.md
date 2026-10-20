@@ -234,13 +234,12 @@ All permission checks are in place. Database RLS policies enforce manage_offence
 - src/routes/_authenticated/reports.tsx (added permission check for view_reports)
 - src/routes/_authenticated/conduct-actions.tsx (added permission checks for photos and messaging)
 
-### Need Modification (HIGH PRIORITY - REMAINING FOR PROMPT 3C)
-- src/routes/_authenticated/platform.tsx (new roles + suspension UI + support view)
-- Platform owner routing (redirect to /platform after sign-in)
-- Support view school picker with banner and audit logging
+### Need Modification (REMAINING FOR FUTURE)
+- Support view school picker with banner and audit logging (skipped due to token constraints)
 
-### Created (Prompt 3B)
-- src/lib/school.functions.ts (NEW - staff management functions: invite, updateRole, setActive, list)
+### Created (Prompt 3B/3C)
+- src/lib/school.functions.ts (NEW - staff management functions: invite, updateRole, setActive, list, searchUserByEmail, addExistingStaff)
+- supabase/phase3c-fixes.sql (NEW - fixes for production issues: school_settings sequence, audit_logs columns, triggers)
 
 ## ESTIMATED REMAINING WORK (for Prompt 3C)
 

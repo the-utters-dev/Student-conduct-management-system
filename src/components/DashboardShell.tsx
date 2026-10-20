@@ -97,7 +97,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
     : null;
   const roleLabelText = role ? roleLabel(role) : null;
   const { data: school } = useSchoolSettings();
-  const schoolName = tenantSchool?.name || school?.school_name || "Your School";
+  const schoolName = isPlatformAdmin ? "SCDMS Platform" : (tenantSchool?.name || school?.school_name || "Your School");
   const { atRisk, criticalCount } = useConductStandings();
   const openCases = atRisk.length;
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
