@@ -110,7 +110,9 @@ function ConductActionsPage() {
 
   const studentsQuery = useQuery({
     queryKey: ["students", "active", schoolId],
+    enabled: Boolean(schoolId),
     queryFn: async (): Promise<StudentOption[]> => {
+      if (!schoolId) return [];
       const { data, error } = await supabase
         .from("students")
         .select("id, admission_no, full_name, class_name, house, parent_phone")
@@ -123,7 +125,9 @@ function ConductActionsPage() {
 
   const offensesQuery = useQuery({
     queryKey: ["offenses", "active", schoolId],
+    enabled: Boolean(schoolId),
     queryFn: async (): Promise<Offense[]> => {
+      if (!schoolId) return [];
       const { data, error } = await supabase
         .from("offenses_catalog")
         .select("id, code, title, category, severity, marks_deducted")
@@ -134,22 +138,39 @@ function ConductActionsPage() {
     },
   });
 
+  const [goodDeedTableMissing, setGoodDeedTableMissing] = useState(false);
+
   const goodDeedCategoriesQuery = useQuery({
     queryKey: ["good-deed-categories", "active", schoolId],
+    enabled: Boolean(schoolId),
     queryFn: async (): Promise<GoodDeedCategory[]> => {
+      if (!schoolId) return [];
       const res = await db
         .from("good_deed_categories")
         .select("id, name, default_marks, default_merit_points, is_active")
         .eq("is_active", true)
         .order("name");
-      if (res.error) throw res.error;
+      if (res.error) {
+        // Only hide good deed option if table doesn't exist (error codes 42P01 or PGRST205)
+        const code = (res.error as any)?.code;
+        const message = res.error.message?.toLowerCase() ?? "";
+        if (code === "42P01" || code === "PGRST205" || message.includes("does not exist")) {
+          setGoodDeedTableMissing(true);
+          return [];
+        }
+        // For any other error (e.g., RLS policy failure, network error), throw to show error
+        throw res.error;
+      }
+      setGoodDeedTableMissing(false);
       return (res.data ?? []) as unknown as GoodDeedCategory[];
     },
   });
 
   const termQuery = useQuery({
     queryKey: ["active-term", schoolId],
+    enabled: Boolean(schoolId),
     queryFn: async () => {
+      if (!schoolId) return null;
       const { data, error } = await supabase
         .from("academic_terms")
         .select("id, name, starting_marks")
@@ -162,7 +183,9 @@ function ConductActionsPage() {
 
   const recentQuery = useQuery({
     queryKey: ["conduct-logs", "recent", schoolId],
+    enabled: Boolean(schoolId),
     queryFn: async () => {
+      if (!schoolId) return [];
       const res = await db
         .from("conduct_logs")
         .select("id, student_id, entry_type, marks, reason, occurred_on, evidence_url, offense:offenses_catalog(title), good_deed_category:good_deed_categories(name), student:students(full_name, admission_no, class_name, parent_phone)")
@@ -356,6 +379,22 @@ function ConductActionsPage() {
     onError: (err: Error) => toast.error(err.message || "Couldn't save this entry."),
   });
 
+  if (!schoolId) {
+    return (
+      <DashboardShell
+        greeting="Conduct Actions"
+        dateLine="Mark deductions and restorations"
+      >
+        <div className="rounded-3xl border border-glass-line bg-glass p-10 shadow-panel backdrop-blur-2xl">
+          <h2 className="font-display text-2xl font-bold text-ink">No school context</h2>
+          <p className="mt-2 max-w-md text-sm text-soft">
+            This page requires a school context. Platform administrators must be assigned to a school to record conduct entries.
+          </p>
+        </div>
+      </DashboardShell>
+    );
+  }
+
   if (!isDisciplineStaff) {
     return (
       <DashboardShell
@@ -448,12 +487,12 @@ function ConductActionsPage() {
               <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
                 Action type
               </label>
-              <div className={`grid ${goodDeedCategoriesQuery.isError ? "grid-cols-2" : "grid-cols-3"} gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline`}>
+              <div className={`grid ${goodDeedTableMissing ? "grid-cols-2" : "grid-cols-3"} gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline`}>
                 {(
                   [
                     { key: "deduction", label: "Deduction", hint: "Subtract marks", color: "brand" },
                     { key: "restoration", label: "Restoration", hint: "Add marks back", color: "brand" },
-                    ...(goodDeedCategoriesQuery.isError
+                    ...(goodDeedTableMissing
                       ? []
                       : [{ key: "good_deed" as const, label: "Good deed", hint: "Recognise positive", color: "ok" }]),
                   ] as const

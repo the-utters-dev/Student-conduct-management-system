@@ -115,6 +115,9 @@ export const listSchoolStaff = createServerFn({ method: "GET" })
 export const inviteSchoolStaff = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { email: string; full_name: string; role: SchoolRole }) => {
+    if (!d || typeof d !== "object") {
+      throw new Error("Missing invite details. Please provide email, full name, and role.");
+    }
     const email = String(d.email ?? "").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new Error("Enter a valid email address.");
@@ -147,7 +150,12 @@ export const inviteSchoolStaff = createServerFn({ method: "POST" })
       if (error.message.includes("already registered")) {
         throw new Error(`A user with email ${data.email} already exists. Use the staff list to assign them to your school.`);
       }
-      throw new Error(error.message);
+      // Check for rate limit
+      if (error.message.includes("rate limit") || error.message.includes("too many")) {
+        throw new Error("Email rate limit reached. Please wait a few minutes and try again.");
+      }
+      // Friendly error for other cases
+      throw new Error(`Failed to send invitation: ${error.message}`);
     }
 
     const invitedUserId = invited.user.id;
@@ -196,6 +204,9 @@ export const inviteSchoolStaff = createServerFn({ method: "POST" })
 export const updateStaffRole = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { user_id: string; role: SchoolRole }) => {
+    if (!d || typeof d !== "object") {
+      throw new Error("Missing role update details. Please provide user_id and role.");
+    }
     if (!UUID.test(d.user_id)) throw new Error("Invalid user ID.");
     if (!SCHOOL_ROLES.includes(d.role)) {
       throw new Error("Invalid role. Must be one of: School Director, Master of Discipline, Matron, Patron.");
@@ -310,6 +321,9 @@ export const updateStaffRole = createServerFn({ method: "POST" })
 export const setStaffActive = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { user_id: string; active: boolean }) => {
+    if (!d || typeof d !== "object") {
+      throw new Error("Missing activation details. Please provide user_id and active status.");
+    }
     if (!UUID.test(d.user_id)) throw new Error("Invalid user ID.");
     if (typeof d.active !== "boolean") throw new Error("Active must be true or false.");
     return d;

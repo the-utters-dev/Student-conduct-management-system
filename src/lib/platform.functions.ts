@@ -152,6 +152,9 @@ export const assignStaff = createServerFn({ method: "POST" })
 export const inviteStaff = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { email: string; full_name: string; school_id: string; role: StaffRole; redirect_to: string }) => {
+    if (!d || typeof d !== "object") {
+      throw new Error("Missing invite details. Please provide email, full name, school, and role.");
+    }
     const email = String(d.email ?? "").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
     if (!UUID.test(d.school_id)) throw new Error("Choose a school.");
@@ -164,7 +167,18 @@ export const inviteStaff = createServerFn({ method: "POST" })
       data: { full_name: data.full_name, user_role: data.role },
       redirectTo: data.redirect_to,
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      // Check if user already exists
+      if (error.message.includes("already registered")) {
+        throw new Error(`A user with email ${data.email} already exists.`);
+      }
+      // Check for rate limit
+      if (error.message.includes("rate limit") || error.message.includes("too many")) {
+        throw new Error("Email rate limit reached. Please wait a few minutes and try again.");
+      }
+      // Friendly error for other cases
+      throw new Error(`Failed to send invitation: ${error.message}`);
+    }
     const userId = invited.user.id;
     const { error: pErr } = await admin.from("profiles").update({ school_id: data.school_id }).eq("id", userId);
     const err = missingSetup(pErr);

@@ -387,7 +387,7 @@ function StaffTab() {
       toast.error("Email and full name are required");
       return;
     }
-    inviteMutation.mutate({ email: inviteEmail, full_name: inviteName, role: inviteRole } as never);
+    inviteMutation.mutate({ data: { email: inviteEmail, full_name: inviteName, role: inviteRole } } as never);
     setInviteEmail("");
     setInviteName("");
     setInviteRole("matron");
@@ -440,7 +440,7 @@ function StaffTab() {
                   <select
                     value={member.roles[0] ?? "matron"}
                     onChange={(e) =>
-                      updateRoleMutation.mutate({ user_id: member.id, role: e.target.value as SchoolRole } as never)
+                      updateRoleMutation.mutate({ data: { user_id: member.id, role: e.target.value as SchoolRole } } as never)
                     }
                     className="rounded-lg border border-input bg-background px-2 py-1 text-xs text-ink"
                     disabled={updateRoleMutation.isPending}
@@ -456,7 +456,7 @@ function StaffTab() {
                       type="checkbox"
                       checked={member.is_active}
                       onChange={(e) =>
-                        toggleActiveMutation.mutate({ user_id: member.id, active: e.target.checked } as never)
+                        toggleActiveMutation.mutate({ data: { user_id: member.id, active: e.target.checked } } as never)
                       }
                       disabled={toggleActiveMutation.isPending}
                     />
