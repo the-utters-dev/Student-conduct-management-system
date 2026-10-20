@@ -15,6 +15,7 @@ export interface SchoolSettings {
   class_levels?: string[];
   role_titles?: Record<string, string>;
   permissions?: Record<string, Record<PermissionKey, boolean>>;
+  good_deed_reward?: "recognition" | "restore_marks" | "merit_points";
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {

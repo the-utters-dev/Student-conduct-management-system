@@ -47,6 +47,14 @@ interface Offense {
   marks_deducted: number;
 }
 
+interface GoodDeedCategory {
+  id: string;
+  name: string;
+  default_marks: number;
+  default_merit_points: number;
+  is_active: boolean;
+}
+
 interface BalanceRow {
   student_id: string;
   term_id: string;
@@ -67,6 +75,7 @@ interface RecentEntry {
   occurred_on: string;
   evidence_url?: string | null;
   offense: { title: string } | null;
+  good_deed_category?: { name: string } | null;
   student: { full_name: string; admission_no: string; class_name: string; parent_phone: string | null } | null;
 }
 
@@ -87,9 +96,11 @@ function ConductActionsPage() {
   const [studentId, setStudentId] = useState("");
   const [studentQuery, setStudentQuery] = useState("");
   const [listOpen, setListOpen] = useState(false);
-  const [entryType, setEntryType] = useState<"deduction" | "restoration">("deduction");
+  const [entryType, setEntryType] = useState<"deduction" | "restoration" | "good_deed">("deduction");
   const [offenseId, setOffenseId] = useState("");
+  const [goodDeedCategoryId, setGoodDeedCategoryId] = useState("");
   const [marks, setMarks] = useState<string>("1");
+  const [meritPoints, setMeritPoints] = useState<string>("1");
   const [occurredOn, setOccurredOn] = useState(todayISO());
   const [reason, setReason] = useState("");
   const [notifyParent, setNotifyParent] = useState(true);
@@ -123,6 +134,19 @@ function ConductActionsPage() {
     },
   });
 
+  const goodDeedCategoriesQuery = useQuery({
+    queryKey: ["good-deed-categories", "active", schoolId],
+    queryFn: async (): Promise<GoodDeedCategory[]> => {
+      const res = await db
+        .from("good_deed_categories")
+        .select("id, name, default_marks, default_merit_points, is_active")
+        .eq("is_active", true)
+        .order("name");
+      if (res.error) throw res.error;
+      return (res.data ?? []) as unknown as GoodDeedCategory[];
+    },
+  });
+
   const termQuery = useQuery({
     queryKey: ["active-term", schoolId],
     queryFn: async () => {
@@ -141,7 +165,7 @@ function ConductActionsPage() {
     queryFn: async () => {
       const res = await db
         .from("conduct_logs")
-        .select("id, student_id, entry_type, marks, reason, occurred_on, evidence_url, offense:offenses_catalog(title), student:students(full_name, admission_no, class_name, parent_phone)")
+        .select("id, student_id, entry_type, marks, reason, occurred_on, evidence_url, offense:offenses_catalog(title), good_deed_category:good_deed_categories(name), student:students(full_name, admission_no, class_name, parent_phone)")
         .order("created_at", { ascending: false })
         .limit(12);
       if (res.error) throw res.error;
@@ -187,8 +211,27 @@ function ConductActionsPage() {
     if (offense) setMarks(String(offense.marks_deducted));
   }, [offenseId, offensesQuery.data]);
 
+  // Auto-fill marks and merit points from good deed category and reward setting
+  useEffect(() => {
+    if (entryType !== "good_deed" || !goodDeedCategoryId) return;
+    const category = goodDeedCategoriesQuery.data?.find((c) => c.id === goodDeedCategoryId);
+    if (!category) return;
+
+    const rewardMode = schoolSettings?.good_deed_reward ?? "restore_marks";
+    if (rewardMode === "recognition") {
+      setMarks("0");
+      setMeritPoints("0");
+    } else if (rewardMode === "restore_marks") {
+      setMarks(String(category.default_marks));
+      setMeritPoints("0");
+    } else if (rewardMode === "merit_points") {
+      setMarks("0");
+      setMeritPoints(String(category.default_merit_points));
+    }
+  }, [goodDeedCategoryId, goodDeedCategoriesQuery.data, schoolSettings?.good_deed_reward, entryType]);
+
   const markValue = Number.parseInt(marks, 10);
-  const validMarks = Number.isFinite(markValue) && markValue > 0;
+  const validMarks = Number.isFinite(markValue) && markValue >= 0;
   const currentBalance = balanceQuery.data?.current_marks ?? null;
   const newBalance =
     currentBalance === null || !validMarks
@@ -207,33 +250,41 @@ function ConductActionsPage() {
     mutationFn: async () => {
       if (!studentId || !termId) throw new Error("Select a student and an active term first.");
       const evidence = await uploadEvidence(evidenceFile, schoolId);
+      const meritPointsValue = Number.parseInt(meritPoints, 10);
       const { data: log, dropped } = await insertWithColumnFallback(
         "conduct_logs",
         {
           student_id: studentId,
           term_id: termId,
           offense_id: offenseId || null,
+          good_deed_category_id: goodDeedCategoryId || null,
           entry_type: entryType,
           marks: markValue,
+          merit_points: Number.isFinite(meritPointsValue) ? meritPointsValue : 0,
           reason: reason.trim() || null,
           occurred_on: occurredOn,
           recorded_by: user?.id ?? null,
           evidence_path: evidence.evidence_path,
           evidence_url: evidence.evidence_url,
         },
-        ["evidence_path", "evidence_url"],
+        ["evidence_path", "evidence_url", "good_deed_category_id", "merit_points"],
       );
 
       const offense = offensesQuery.data?.find((o) => o.id === offenseId);
-      const label = entryType === "deduction" ? "Deduction" : "Restoration";
-      const cause = offense?.title || reason.trim() || "conduct review";
+      const goodDeedCategory = goodDeedCategoriesQuery.data?.find((c) => c.id === goodDeedCategoryId);
+      const label = entryType === "deduction" ? "Deduction" : entryType === "restoration" ? "Restoration" : "Good deed";
+      const cause = entryType === "good_deed"
+        ? goodDeedCategory?.name || reason.trim() || "good conduct"
+        : offense?.title || reason.trim() || "conduct review";
       const startingMarks = balanceQuery.data?.starting_marks ?? 40;
       const resultingBalance = newBalance ?? currentBalance ?? startingMarks;
 
       let smsQueued = false;
       const phone = selectedStudent?.parent_phone ?? null;
       if (notifyParent && phone) {
-        const messageBody = `SCDMS Update: ${selectedStudent?.full_name} received a ${label} of ${markValue} marks for '${cause}'. Current Conduct Balance: ${resultingBalance}/${startingMarks}.`;
+        const messageBody = entryType === "good_deed"
+          ? `Good news from ${schoolSettings?.school_name ?? "School"}! ${selectedStudent?.full_name} was recognised for ${cause}.${markValue > 0 ? ` Conduct: ${resultingBalance}/${startingMarks}.` : ""} Thank you for raising a responsible child.`
+          : `SCDMS Update: ${selectedStudent?.full_name} received a ${label} of ${markValue} marks for '${cause}'. Current Conduct Balance: ${resultingBalance}/${startingMarks}.`;
         const { error: notifyError } = await supabase.from("notification_logs").insert({
           conduct_log_id: log.id,
           student_id: studentId,
@@ -248,9 +299,10 @@ function ConductActionsPage() {
         }
       }
 
+      const auditAction = entryType === "good_deed" ? "CREATE_GOOD_DEED" : "CREATE_CONDUCT_LOG";
       const { error: auditError } = await supabase.from("audit_logs").insert({
         user_id: user?.id ?? null,
-        action: "CREATE_CONDUCT_LOG",
+        action: auditAction,
         entity_type: "conduct_logs",
         entity_id: log.id,
         payload: {
@@ -289,8 +341,10 @@ function ConductActionsPage() {
         description: `Ledger entry saved · ${smsLine}${result.evidenceNote ? ` · ${result.evidenceNote}` : ""}`,
       });
       setOffenseId("");
+      setGoodDeedCategoryId("");
       setReason("");
       setMarks("1");
+      setMeritPoints("1");
       setOccurredOn(todayISO());
       setEvidenceFile(null);
       setEvidenceKey((k) => k + 1);
@@ -394,11 +448,14 @@ function ConductActionsPage() {
               <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
                 Action type
               </label>
-              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline">
+              <div className={`grid ${goodDeedCategoriesQuery.isError ? "grid-cols-2" : "grid-cols-3"} gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline`}>
                 {(
                   [
-                    { key: "deduction", label: "Deduction", hint: "Subtract marks" },
-                    { key: "restoration", label: "Restoration", hint: "Add marks back" },
+                    { key: "deduction", label: "Deduction", hint: "Subtract marks", color: "brand" },
+                    { key: "restoration", label: "Restoration", hint: "Add marks back", color: "brand" },
+                    ...(goodDeedCategoriesQuery.isError
+                      ? []
+                      : [{ key: "good_deed" as const, label: "Good deed", hint: "Recognise positive", color: "ok" }]),
                   ] as const
                 ).map((opt) => (
                   <button
@@ -407,7 +464,7 @@ function ConductActionsPage() {
                     onClick={() => setEntryType(opt.key)}
                     className={
                       entryType === opt.key
-                        ? "rounded-xl bg-brand px-4 py-2.5 text-center text-[13px] font-semibold text-white shadow-brand-glow"
+                        ? `rounded-xl ${opt.color === "ok" ? "bg-ok text-white shadow-[0_4px_16px_rgba(34,197,94,0.3)]" : "bg-brand text-white shadow-brand-glow"} px-4 py-2.5 text-center text-[13px] font-semibold`
                         : "rounded-xl px-4 py-2.5 text-center text-[13px] font-semibold text-soft transition hover:text-ink"
                     }
                   >
@@ -419,39 +476,74 @@ function ConductActionsPage() {
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
-                  Offense / reason code
-                </label>
-                <select
-                  value={offenseId}
-                  onChange={(e) => setOffenseId(e.target.value)}
-                  className={inputClass}
-                >
-                  <option value="">
-                    {entryType === "deduction" ? "Select an offense" : "None (restoration)"}
-                  </option>
-                  {(offensesQuery.data ?? []).map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.code} · {o.title} ({o.marks_deducted})
+              {entryType === "good_deed" ? (
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                    Good deed category
+                  </label>
+                  <select
+                    value={goodDeedCategoryId}
+                    onChange={(e) => setGoodDeedCategoryId(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Select a category</option>
+                    {(goodDeedCategoriesQuery.data ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                    Offense / reason code
+                  </label>
+                  <select
+                    value={offenseId}
+                    onChange={(e) => setOffenseId(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">
+                      {entryType === "deduction" ? "Select an offense" : "None (restoration)"}
                     </option>
-                  ))}
-                </select>
-              </div>
+                    {(offensesQuery.data ?? []).map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.code} · {o.title} ({o.marks_deducted})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
-                  Marks {entryType === "deduction" ? "to deduct" : "to restore"}
+                  {entryType === "deduction" ? "Marks to deduct" : entryType === "good_deed" ? "Marks to restore" : "Marks to restore"}
                 </label>
                 <input
                   type="number"
-                  min={1}
+                  min={0}
                   value={marks}
                   onChange={(e) => setMarks(e.target.value)}
                   className={inputClass}
                 />
               </div>
             </div>
+
+            {entryType === "good_deed" && (
+              <div>
+                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                  Merit points
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={meritPoints}
+                  onChange={(e) => setMeritPoints(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            )}
 
             <div>
               <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
@@ -512,7 +604,7 @@ function ConductActionsPage() {
                 />
                 <span>
                   <span className="block text-[13px] font-semibold text-ink">
-                    Notify parent via SMS
+                    {entryType === "good_deed" ? "Send appreciation to parent" : "Notify parent via SMS"}
                   </span>
                   <span className="block text-[11px] text-soft">
                     {selectedStudent
@@ -617,10 +709,18 @@ function ConductActionsPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold text-ink">{r.student?.full_name ?? "Student"}</p>
                     <p className="truncate text-[11px] text-soft">
-                      <span className={r.entry_type === "deduction" ? "text-danger" : "text-ok"}>
-                        {r.entry_type === "deduction" ? "−" : "+"}{r.marks}
-                      </span>{" "}
-                      · {r.offense?.title ?? r.reason ?? "Conduct review"} · {r.occurred_on}
+                      {r.entry_type === "good_deed" ? (
+                        <span className="text-ok">
+                          ★ {r.marks > 0 ? `+${r.marks}` : "Recognised"}
+                        </span>
+                      ) : (
+                        <span className={r.entry_type === "deduction" ? "text-danger" : "text-ok"}>
+                          {r.entry_type === "deduction" ? "−" : "+"}{r.marks}
+                        </span>
+                      )}{" "}
+                      · {r.entry_type === "good_deed"
+                        ? r.good_deed_category?.name ?? r.reason ?? "Good conduct"
+                        : r.offense?.title ?? r.reason ?? "Conduct review"} · {r.occurred_on}
                       {r.evidence_url ? " · 📎" : ""}
                     </p>
                   </div>
@@ -638,14 +738,15 @@ function ConductActionsPage() {
                         phone: r.student?.parent_phone ?? null,
                         context: {
                           studentName: r.student?.full_name ?? "your child",
-                          entryType: r.entry_type === "restoration" ? "restoration" : "deduction",
+                          entryType: r.entry_type === "good_deed" ? "good_deed" : r.entry_type === "restoration" ? "restoration" : "deduction",
                           marks: r.marks,
-                          reason: r.offense?.title ?? r.reason,
+                          reason: r.entry_type === "good_deed" ? r.good_deed_category?.name ?? r.reason : r.offense?.title ?? r.reason,
                           balance: bal?.current_marks ?? null,
                           startingMarks: bal?.starting_marks ?? 40,
                           occurredOn: r.occurred_on,
                           evidenceUrl: r.evidence_url ?? null,
                           schoolName: schoolSettings?.school_name ?? "School",
+                          goodDeedCategory: r.entry_type === "good_deed" ? r.good_deed_category?.name ?? null : null,
                         },
                       });
                     }}
