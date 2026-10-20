@@ -138,7 +138,7 @@ function ConductActionsPage() {
     },
   });
 
-  const [goodDeedTableMissing, setGoodDeedTableMissing] = useState(false);
+  const [goodDeedTableMissing, setGoodDeedTableMissing] = useState(true); // Start with true, enable when table confirmed
 
   const goodDeedCategoriesQuery = useQuery({
     queryKey: ["good-deed-categories", "active", schoolId],
@@ -161,7 +161,7 @@ function ConductActionsPage() {
         // For any other error (e.g., RLS policy failure, network error), throw to show error
         throw res.error;
       }
-      setGoodDeedTableMissing(false);
+      setGoodDeedTableMissing(false); // Table exists and query succeeded
       return (res.data ?? []) as unknown as GoodDeedCategory[];
     },
   });

@@ -21,8 +21,11 @@ const UUID = /^[0-9a-f-]{36}$/i;
  * Returns the school_id and admin client.
  */
 async function requireSchoolDirector(context: { supabase: SupabaseClient; userId: string }) {
-  // Get caller's school and role
-  const { data: profile } = await context.supabase
+  // Import admin client to bypass RLS for permission checks
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  // Get caller's school and role using admin client (bypasses RLS)
+  const { data: profile } = await supabaseAdmin
     .from("profiles")
     .select("school_id")
     .eq("id", context.userId)
@@ -32,19 +35,17 @@ async function requireSchoolDirector(context: { supabase: SupabaseClient; userId
     throw new Error("You must belong to a school to perform this action.");
   }
 
-  // Check if caller is a school director
-  const { data: roles } = await context.supabase
+  // Check if caller is a school director (supports both new and legacy roles)
+  const { data: roles } = await supabaseAdmin
     .from("user_roles")
     .select("role")
     .eq("user_id", context.userId)
-    .in("role", ["school_director", "school_leader"]); // Include legacy for backwards compatibility
+    .in("role", ["school_director", "school_leader"] as any); // Include legacy for backwards compatibility, cast to bypass outdated types
 
   if (!roles?.length) {
     throw new Error("Only School Directors can manage staff.");
   }
 
-  // Import admin client
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return { schoolId: profile.school_id, admin: supabaseAdmin as unknown as SupabaseClient };
 }
 
@@ -248,7 +249,7 @@ export const updateStaffRole = createServerFn({ method: "POST" })
       const { data: allDirectors } = await admin
         .from("user_roles")
         .select("user_id")
-        .in("role", ["school_director", "school_leader"]);
+        .in("role", ["school_director", "school_leader"] as any);
 
       const { data: schoolProfiles } = await admin
         .from("profiles")
@@ -268,7 +269,7 @@ export const updateStaffRole = createServerFn({ method: "POST" })
       const { data: allDirectors } = await admin
         .from("user_roles")
         .select("user_id")
-        .in("role", ["school_director", "school_leader"]);
+        .in("role", ["school_director", "school_leader"] as any);
 
       const { data: schoolProfiles } = await admin
         .from("profiles")
