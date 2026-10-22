@@ -14,10 +14,20 @@ import {
   inviteSchoolStaff,
   updateStaffRole,
   setStaffActive,
+  sendStaffPasswordReset,
+  setStaffTemporaryPassword,
   SCHOOL_ROLES,
   type SchoolRole,
   type SchoolStaffMember,
 } from "@/lib/school.functions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -337,6 +347,10 @@ function StaffTab() {
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<SchoolRole>("matron");
 
+  // Password reset dialogs
+  const [resetPasswordDialog, setResetPasswordDialog] = useState<{ id: string; email: string | null; name: string } | null>(null);
+  const [tempPasswordDialog, setTempPasswordDialog] = useState<{ password: string; userName: string } | null>(null);
+
   // Role titles state
   const [roleTitles, setRoleTitles] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -464,6 +478,13 @@ function StaffTab() {
                       {member.is_active ? "Active" : "Inactive"}
                     </span>
                   </label>
+                  <button
+                    type="button"
+                    onClick={() => setResetPasswordDialog({ id: member.id, email: member.email, name: member.full_name })}
+                    className="rounded-lg bg-warn px-2 py-1 text-xs font-semibold text-white"
+                  >
+                    Reset password
+                  </button>
                 </div>
               </div>
             ))}
@@ -592,6 +613,102 @@ function StaffTab() {
           Save permissions
         </button>
       </div>
+
+      {/* Password reset options dialog */}
+      <Dialog open={!!resetPasswordDialog} onOpenChange={(open) => !open && setResetPasswordDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password: {resetPasswordDialog?.name}</DialogTitle>
+            <DialogDescription>
+              Choose how to reset the password for this staff member.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <button
+              onClick={async () => {
+                if (resetPasswordDialog?.email) {
+                  try {
+                    await sendStaffPasswordReset({ data: { user_email: resetPasswordDialog.email } } as never);
+                    toast.success("Password reset email sent");
+                    setResetPasswordDialog(null);
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  }
+                }
+              }}
+              className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-on-brand"
+            >
+              Send reset email
+            </button>
+            <button
+              onClick={async () => {
+                if (resetPasswordDialog) {
+                  try {
+                    const result = await setStaffTemporaryPassword({ data: { user_id: resetPasswordDialog.id } } as never);
+                    setResetPasswordDialog(null);
+                    setTempPasswordDialog({ password: result.password, userName: resetPasswordDialog.name });
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  }
+                }
+              }}
+              className="w-full rounded-xl bg-warn px-4 py-3 text-sm font-semibold text-white"
+            >
+              Set temporary password
+            </button>
+          </div>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setResetPasswordDialog(null)}
+              className="rounded-xl px-4 py-2 text-sm text-soft"
+            >
+              Cancel
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Temporary password dialog */}
+      <Dialog open={!!tempPasswordDialog} onOpenChange={(open) => !open && setTempPasswordDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Temporary Password Set</DialogTitle>
+            <DialogDescription>
+              A temporary password has been set for {tempPasswordDialog?.userName}. Copy it now and share it securely
+              with the user. This password will not be shown again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-2xl bg-glass-bright p-4">
+            <div className="flex items-center justify-between">
+              <code className="font-mono text-lg font-bold text-ink">{tempPasswordDialog?.password}</code>
+              <button
+                onClick={() => {
+                  if (tempPasswordDialog) {
+                    void navigator.clipboard.writeText(tempPasswordDialog.password);
+                    toast.success("Password copied to clipboard");
+                  }
+                }}
+                className="rounded-xl bg-brand px-3 py-1.5 text-xs font-semibold text-on-brand"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+          <p className="text-sm text-soft">
+            The user must change this password on their first sign-in.
+          </p>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setTempPasswordDialog(null)}
+              className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand"
+            >
+              Done
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

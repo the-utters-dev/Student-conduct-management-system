@@ -24,6 +24,7 @@ import {
   getPlatformOverview,
   inviteStaff,
   renameSchool,
+  setTemporaryPassword,
   updateSchool,
   updateSchoolStatus,
   type Plan,
@@ -70,6 +71,7 @@ function PlatformPage() {
   const updateStatusFn = useServerFn(updateSchoolStatus);
   const deleteFn = useServerFn(deleteSchool);
   const downloadFn = useServerFn(downloadSchoolData);
+  const setTempPasswordFn = useServerFn(setTemporaryPassword);
 
   const [tab, setTab] = useState<"schools" | "staff" | "subs">("schools");
   const [name, setName] = useState("");
@@ -89,6 +91,7 @@ function PlatformPage() {
   const [statusReason, setStatusReason] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<{ id: string; name: string } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [tempPasswordDialog, setTempPasswordDialog] = useState<{ password: string; userName: string } | null>(null);
 
   const q = useQuery({ queryKey: ["platform"], queryFn: () => overviewFn(), enabled: isPlatformAdmin });
   const refresh = () => qc.invalidateQueries({ queryKey: ["platform"] });
@@ -407,6 +410,19 @@ function PlatformPage() {
                         </option>
                       ))}
                     </select>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await setTempPasswordFn({ data: { user_id: p.id } });
+                          setTempPasswordDialog({ password: result.password, userName: p.full_name || p.email || "User" });
+                        } catch (err) {
+                          toast.error((err as Error).message);
+                        }
+                      }}
+                      className="rounded-2xl bg-warn px-3 py-2 text-xs font-semibold text-white"
+                    >
+                      Set temp password
+                    </button>
                   </div>
                 );
               })}
@@ -632,6 +648,47 @@ function PlatformPage() {
               </button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Temporary password dialog */}
+      <Dialog open={!!tempPasswordDialog} onOpenChange={(open) => !open && setTempPasswordDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Temporary Password Set</DialogTitle>
+            <DialogDescription>
+              A temporary password has been set for {tempPasswordDialog?.userName}. Copy it now and share it securely
+              with the user. This password will not be shown again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-2xl bg-glass-bright p-4">
+            <div className="flex items-center justify-between">
+              <code className="font-mono text-lg font-bold text-ink">{tempPasswordDialog?.password}</code>
+              <button
+                onClick={() => {
+                  if (tempPasswordDialog) {
+                    void navigator.clipboard.writeText(tempPasswordDialog.password);
+                    toast.success("Password copied to clipboard");
+                  }
+                }}
+                className="rounded-xl bg-brand px-3 py-1.5 text-xs font-semibold text-on-brand"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+          <p className="text-sm text-soft">
+            The user must change this password on their first sign-in.
+          </p>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setTempPasswordDialog(null)}
+              className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand"
+            >
+              Done
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardShell>

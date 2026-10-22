@@ -252,7 +252,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
                 type="button"
                 onClick={async () => {
                   await signOut();
-                  navigate({ to: "/auth" });
+                  navigate({ to: "/auth", search: { message: null } });
                 }}
                 className="rounded-xl px-2 py-1 text-[11px] font-semibold text-soft transition hover:text-ink"
               >

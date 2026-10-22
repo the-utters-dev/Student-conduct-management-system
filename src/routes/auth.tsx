@@ -20,20 +20,24 @@ export const Route = createFileRoute("/auth")({
       { name: "twitter:card", content: "summary" },
     ],
   }),
+  validateSearch: (search: Record<string, unknown>) => ({
+    message: (search['message'] as string | undefined) ?? null,
+  }),
   component: AuthPage,
 });
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
 
 function AuthPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(search.message ?? null);
 
   useEffect(() => {
     void (async () => {
@@ -47,6 +51,27 @@ function AuthPage() {
     setBusy(true);
     setError(null);
     setNotice(null);
+
+    if (mode === "forgot") {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      setBusy(false);
+      if (resetError) {
+        // Show friendly message for rate limit
+        if (resetError.message.includes("rate limit") || resetError.message.includes("too many")) {
+          setError("Email rate limit reached. Please wait a few minutes and try again.");
+          return;
+        }
+        // Generic error handling
+        setError(resetError.message);
+        return;
+      }
+      // Always show the same neutral message
+      // Note: Audit logging for self-service password reset is done in the reset-password route
+      setNotice("If this email has an account, a reset link has been sent.");
+      return;
+    }
 
     if (mode === "signin") {
       const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -107,12 +132,14 @@ function AuthPage() {
           </div>
 
           <h1 className="mt-6 font-display text-2xl font-bold text-ink">
-            {mode === "signin" ? "Staff sign in" : "Create staff account"}
+            {mode === "signin" ? "Staff sign in" : mode === "signup" ? "Create staff account" : "Reset password"}
           </h1>
           <p className="mt-1 text-[13px] text-soft">
             {mode === "signin"
               ? "School staff only. Your School Director will assign your role."
-              : "Your School Director will assign you a role and school after you register."}
+              : mode === "signup"
+                ? "Your School Director will assign you a role and school after you register."
+                : "Enter your email address and we'll send you a password reset link."}
           </p>
 
           <form onSubmit={submit} className="mt-6 space-y-4">
@@ -146,21 +173,23 @@ function AuthPage() {
               />
             </div>
 
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
-                Password
-              </label>
-              <input
-                required
-                type="password"
-                minLength={6}
-                autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 w-full rounded-2xl bg-glass-bright px-4 py-3 text-sm text-ink outline-none ring-1 ring-hairline placeholder:text-faint focus:ring-brand/40"
-                placeholder="••••••••"
-              />
-            </div>
+            {mode !== "forgot" && (
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
+                  Password
+                </label>
+                <input
+                  required
+                  type="password"
+                  minLength={6}
+                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="mt-1 w-full rounded-2xl bg-glass-bright px-4 py-3 text-sm text-ink outline-none ring-1 ring-hairline placeholder:text-faint focus:ring-brand/40"
+                  placeholder="••••••••"
+                />
+              </div>
+            )}
 
             {error && (
               <div className="rounded-2xl bg-danger/10 px-4 py-3 text-[12px] font-medium text-danger">
@@ -182,9 +211,25 @@ function AuthPage() {
                 ? "Please wait…"
                 : mode === "signin"
                   ? "Sign in"
-                  : "Create account"}
+                  : mode === "signup"
+                    ? "Create account"
+                    : "Send reset link"}
             </button>
           </form>
+
+          {mode === "signin" && (
+            <button
+              type="button"
+              onClick={() => {
+                setMode("forgot");
+                setError(null);
+                setNotice(null);
+              }}
+              className="mt-3 w-full text-[12px] font-semibold text-brand hover:underline"
+            >
+              Forgot password?
+            </button>
+          )}
 
           <button
             type="button"
@@ -193,11 +238,13 @@ function AuthPage() {
               setError(null);
               setNotice(null);
             }}
-            className="mt-5 w-full text-[12px] font-semibold text-brand hover:underline"
+            className="mt-3 w-full text-[12px] font-semibold text-brand hover:underline"
           >
             {mode === "signin"
               ? "New here? Create a staff account"
-              : "Already registered? Sign in"}
+              : mode === "forgot"
+                ? "Back to sign in"
+                : "Already registered? Sign in"}
           </button>
         </div>
       </div>

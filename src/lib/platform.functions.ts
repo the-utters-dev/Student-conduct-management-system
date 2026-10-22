@@ -454,3 +454,55 @@ export const downloadSchoolData = createServerFn({ method: "POST" })
 
     return backup;
   });
+
+/**
+ * Generates a strong 10-character temporary password and sets it for a user.
+ * Platform admins can set temporary passwords for any user.
+ * Returns the password to be shown ONCE in the UI.
+ */
+export const setTemporaryPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { user_id: string }) => {
+    if (!UUID.test(d.user_id)) throw new Error("Invalid user ID.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+
+    // Generate a strong 10-character password
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*";
+    let tempPassword = "";
+    const array = new Uint8Array(10);
+    crypto.getRandomValues(array);
+    for (let i = 0; i < 10; i++) {
+      tempPassword += chars[array[i]! % chars.length];
+    }
+
+    // Set the password and mark that user must change it
+    const { error } = await admin.auth.admin.updateUserById(data.user_id, {
+      password: tempPassword,
+      user_metadata: { must_change_password: true },
+    });
+
+    if (error) throw new Error(error.message);
+
+    // Get user details for audit log
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("school_id")
+      .eq("id", data.user_id)
+      .maybeSingle();
+
+    // Write audit log
+    await admin.from("audit_logs").insert({
+      user_id: (context as { userId: string }).userId,
+      action: "PASSWORD_TEMP_SET",
+      entity_type: "auth",
+      entity_id: data.user_id,
+      payload: { target_user_id: data.user_id },
+      school_id: profile?.school_id ?? null,
+    });
+
+    // Return the temporary password (to be shown ONCE)
+    return { password: tempPassword };
+  });

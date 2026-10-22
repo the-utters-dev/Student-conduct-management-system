@@ -586,3 +586,158 @@ export const setStaffActive = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+/**
+ * Sends a password reset email to a staff member.
+ * Only School Directors can send reset emails for staff in their school.
+ * Cannot reset password for system_admin accounts.
+ */
+export const sendStaffPasswordReset = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { user_email: string }) => {
+    if (!d || typeof d !== "object") {
+      throw new Error("Missing email parameter.");
+    }
+    const email = String(d.user_email ?? "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Enter a valid email address.");
+    }
+    return { user_email: email };
+  })
+  .handler(async ({ data, context }) => {
+    const { schoolId, admin } = await requireSchoolDirector(context as never);
+    const callerId = (context as { userId: string }).userId;
+
+    // Find the user by email
+    const { data: users } = await admin.auth.admin.listUsers();
+    const user = users?.users?.find((u) => u.email?.toLowerCase() === data.user_email);
+
+    if (!user) {
+      // Don't reveal if user exists or not (security best practice)
+      return { ok: true };
+    }
+
+    // Verify target user belongs to this school
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("school_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!targetProfile || targetProfile.school_id !== schoolId) {
+      // Don't reveal if user exists in another school
+      return { ok: true };
+    }
+
+    // Check if target user is a system_admin
+    const { data: targetRoles } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id);
+
+    if (targetRoles?.some((r) => r.role === "system_admin")) {
+      throw new Error("Cannot reset password for platform administrators.");
+    }
+
+    // Send password reset email
+    const { error } = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email: data.user_email,
+      options: {
+        redirectTo: `${process.env["VITE_APP_URL"] ?? "http://localhost:3000"}/reset-password`,
+      },
+    });
+
+    if (error) {
+      // Check for rate limit
+      if (error.message.includes("rate limit") || error.message.includes("too many")) {
+        throw new Error("Email rate limit reached. Please wait a few minutes and try again.");
+      }
+      throw new Error(error.message);
+    }
+
+    // Write audit log
+    await admin.from("audit_logs").insert({
+      school_id: schoolId,
+      user_id: callerId,
+      action: "PASSWORD_RESET_EMAIL",
+      entity_type: "auth",
+      entity_id: user.id,
+      payload: {
+        target_user_id: user.id,
+        target_email: data.user_email,
+      },
+    });
+
+    return { ok: true };
+  });
+
+/**
+ * Generates a strong 10-character temporary password and sets it for a staff member.
+ * Only School Directors can set temporary passwords for staff in their school.
+ * Cannot set password for system_admin accounts.
+ * Returns the password to be shown ONCE in the UI.
+ */
+export const setStaffTemporaryPassword = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { user_id: string }) => {
+    if (!UUID.test(d.user_id)) throw new Error("Invalid user ID.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const { schoolId, admin } = await requireSchoolDirector(context as never);
+    const callerId = (context as { userId: string }).userId;
+
+    // Verify target user belongs to this school
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("school_id")
+      .eq("id", data.user_id)
+      .maybeSingle();
+
+    if (!targetProfile || targetProfile.school_id !== schoolId) {
+      throw new Error("This staff member does not belong to your school.");
+    }
+
+    // Check if target user is a system_admin
+    const { data: targetRoles } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", data.user_id);
+
+    if (targetRoles?.some((r) => r.role === "system_admin")) {
+      throw new Error("Cannot set password for platform administrators.");
+    }
+
+    // Generate a strong 10-character password
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*";
+    let tempPassword = "";
+    const array = new Uint8Array(10);
+    crypto.getRandomValues(array);
+    for (let i = 0; i < 10; i++) {
+      tempPassword += chars[array[i]! % chars.length];
+    }
+
+    // Set the password and mark that user must change it
+    const { error } = await admin.auth.admin.updateUserById(data.user_id, {
+      password: tempPassword,
+      user_metadata: { must_change_password: true },
+    });
+
+    if (error) throw new Error(error.message);
+
+    // Write audit log
+    await admin.from("audit_logs").insert({
+      school_id: schoolId,
+      user_id: callerId,
+      action: "PASSWORD_TEMP_SET",
+      entity_type: "auth",
+      entity_id: data.user_id,
+      payload: {
+        target_user_id: data.user_id,
+      },
+    });
+
+    // Return the temporary password (to be shown ONCE)
+    return { password: tempPassword };
+  });
