@@ -12,6 +12,7 @@ import { fileToResizedDataUrl } from "@/lib/image";
 import {
   listSchoolStaff,
   inviteSchoolStaff,
+  createSchoolAccountWithoutEmail,
   updateStaffRole,
   setStaffActive,
   sendStaffPasswordReset,
@@ -320,6 +321,17 @@ function StaffTab() {
     },
   });
 
+  const createAccountMutation = useMutation({
+    mutationFn: createSchoolAccountWithoutEmail,
+    onSuccess: (data) => {
+      setTempPasswordDialog({ password: data.password, userName: inviteName || inviteEmail });
+      void qc.invalidateQueries({ queryKey: ["school-staff", schoolId] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
   const updateRoleMutation = useMutation({
     mutationFn: updateStaffRole,
     onSuccess: () => {
@@ -494,8 +506,8 @@ function StaffTab() {
 
       {/* Invite Staff */}
       <div className={panel}>
-        <h3 className="font-display text-lg font-bold text-ink">Invite Staff</h3>
-        <form onSubmit={handleInvite} className="mt-4 space-y-3">
+        <h3 className="font-display text-lg font-bold text-ink">Add Staff Member</h3>
+        <form onSubmit={(e) => e.preventDefault()} className="mt-4 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-semibold text-soft">
               Email
@@ -532,9 +544,33 @@ function StaffTab() {
               ))}
             </select>
           </label>
-          <button type="submit" className={btn} disabled={inviteMutation.isPending}>
-            {inviteMutation.isPending ? "Sending invitation..." : "Send invitation"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleInvite}
+              className={btn}
+              disabled={inviteMutation.isPending}
+            >
+              {inviteMutation.isPending ? "Sending invitation..." : "Send invitation"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!inviteEmail || !inviteName) {
+                  toast.error("Email and full name are required");
+                  return;
+                }
+                createAccountMutation.mutate({ data: { email: inviteEmail, full_name: inviteName, role: inviteRole } } as never);
+                setInviteEmail("");
+                setInviteName("");
+                setInviteRole("matron");
+              }}
+              className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-on-brand shadow-brand-glow disabled:opacity-60"
+              disabled={createAccountMutation.isPending}
+            >
+              {createAccountMutation.isPending ? "Creating account..." : "Create account (no email)"}
+            </button>
+          </div>
         </form>
       </div>
 

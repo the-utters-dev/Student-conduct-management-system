@@ -93,9 +93,17 @@ function ConductActionsPage() {
   const { data: schoolSettings } = useSchoolSettings();
   const queryClient = useQueryClient();
 
+  // Mode toggle: one or multiple students
+  const [selectionMode, setSelectionMode] = useState<"one" | "several">("one");
   const [studentId, setStudentId] = useState("");
   const [studentQuery, setStudentQuery] = useState("");
   const [listOpen, setListOpen] = useState(false);
+
+  // Multi-student selection state
+  const [selectedClassLevel, setSelectedClassLevel] = useState("");
+  const [selectedStream, setSelectedStream] = useState("");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
+
   const [entryType, setEntryType] = useState<"deduction" | "restoration" | "good_deed">("deduction");
   const [offenseId, setOffenseId] = useState("");
   const [goodDeedCategoryId, setGoodDeedCategoryId] = useState("");
@@ -227,6 +235,41 @@ function ConductActionsPage() {
       .slice(0, 40);
   }, [students, studentQuery]);
 
+  // Extract unique class levels and streams
+  const classLevels = useMemo(() => {
+    const levels = new Set<string>();
+    students.forEach(s => {
+      // Extract class level from class_name (e.g., "P1A" -> "P1", "S3B" -> "S3")
+      const match = s.class_name.match(/^[A-Z]\d+/);
+      if (match) levels.add(match[0]);
+    });
+    return Array.from(levels).sort();
+  }, [students]);
+
+  const streams = useMemo(() => {
+    if (!selectedClassLevel) return [];
+    const streamSet = new Set<string>();
+    students.forEach(s => {
+      if (s.class_name.startsWith(selectedClassLevel)) {
+        // Extract stream letter (e.g., "P1A" -> "A")
+        const stream = s.class_name.replace(selectedClassLevel, "");
+        if (stream) streamSet.add(stream);
+      }
+    });
+    return Array.from(streamSet).sort();
+  }, [students, selectedClassLevel]);
+
+  // Students matching the selected class/stream for multi-selection
+  const matchingStudents = useMemo(() => {
+    if (selectionMode !== "several") return [];
+    if (!selectedClassLevel) return [];
+    return students.filter(s => {
+      const matchesLevel = s.class_name.startsWith(selectedClassLevel);
+      if (!selectedStream) return matchesLevel;
+      return s.class_name === `${selectedClassLevel}${selectedStream}`;
+    });
+  }, [students, selectedClassLevel, selectedStream, selectionMode]);
+
   // Auto-fill marks from the offense catalogue (still editable).
   useEffect(() => {
     if (!offenseId) return;
@@ -267,17 +310,115 @@ function ConductActionsPage() {
           );
 
   const termId = termQuery.data?.id ?? balanceQuery.data?.term_id ?? null;
-  const canSubmit = Boolean(studentId && termId && validMarks && isDisciplineStaff);
+  const canSubmit = selectionMode === "one"
+    ? Boolean(studentId && termId && validMarks && isDisciplineStaff)
+    : Boolean(selectedStudentIds.size > 0 && termId && validMarks && isDisciplineStaff);
 
   const submit = useMutation({
     mutationFn: async () => {
-      if (!studentId || !termId) throw new Error("Select a student and an active term first.");
-      const evidence = await uploadEvidence(evidenceFile, schoolId);
-      const meritPointsValue = Number.parseInt(meritPoints, 10);
-      const { data: log, dropped } = await insertWithColumnFallback(
-        "conduct_logs",
-        {
-          student_id: studentId,
+      if (selectionMode === "one") {
+        // Single student mode (original logic)
+        if (!studentId || !termId) throw new Error("Select a student and an active term first.");
+        const evidence = await uploadEvidence(evidenceFile, schoolId);
+        const meritPointsValue = Number.parseInt(meritPoints, 10);
+        const { data: log, dropped } = await insertWithColumnFallback(
+          "conduct_logs",
+          {
+            student_id: studentId,
+            term_id: termId,
+            offense_id: offenseId || null,
+            good_deed_category_id: goodDeedCategoryId || null,
+            entry_type: entryType,
+            marks: markValue,
+            merit_points: Number.isFinite(meritPointsValue) ? meritPointsValue : 0,
+            reason: reason.trim() || null,
+            occurred_on: occurredOn,
+            recorded_by: user?.id ?? null,
+            evidence_path: evidence.evidence_path,
+            evidence_url: evidence.evidence_url,
+          },
+          ["evidence_path", "evidence_url", "good_deed_category_id", "merit_points"],
+        );
+
+        const offense = offensesQuery.data?.find((o) => o.id === offenseId);
+        const goodDeedCategory = goodDeedCategoriesQuery.data?.find((c) => c.id === goodDeedCategoryId);
+        const label = entryType === "deduction" ? "Deduction" : entryType === "restoration" ? "Restoration" : "Good deed";
+        const cause = entryType === "good_deed"
+          ? goodDeedCategory?.name || reason.trim() || "good conduct"
+          : offense?.title || reason.trim() || "conduct review";
+        const startingMarks = balanceQuery.data?.starting_marks ?? 40;
+        const resultingBalance = newBalance ?? currentBalance ?? startingMarks;
+
+        let smsQueued = false;
+        const phone = selectedStudent?.parent_phone ?? null;
+        if (notifyParent && phone) {
+          const messageBody = entryType === "good_deed"
+            ? `Good news from ${schoolSettings?.school_name ?? "School"}! ${selectedStudent?.full_name} was recognised for ${cause}.${markValue > 0 ? ` Conduct: ${resultingBalance}/${startingMarks}.` : ""} Thank you for raising a responsible child.`
+            : `SCDMS Update: ${selectedStudent?.full_name} received a ${label} of ${markValue} marks for '${cause}'. Current Conduct Balance: ${resultingBalance}/${startingMarks}.`;
+          const { error: notifyError } = await supabase.from("notification_logs").insert({
+            conduct_log_id: log.id,
+            student_id: studentId,
+            recipient_phone: phone,
+            message_body: messageBody,
+            status: "pending",
+          });
+          if (notifyError) {
+            console.error("Failed to queue parent SMS", notifyError);
+          } else {
+            smsQueued = true;
+          }
+        }
+
+        const auditAction = entryType === "good_deed" ? "CREATE_GOOD_DEED" : "CREATE_CONDUCT_LOG";
+        const { error: auditError } = await supabase.from("audit_logs").insert({
+          user_id: user?.id ?? null,
+          action: auditAction,
+          entity_type: "conduct_logs",
+          entity_id: log.id,
+          payload: {
+            student_id: studentId,
+            action_type: entryType,
+            marks_changed: entryType === "deduction" ? -markValue : markValue,
+            timestamp: new Date().toISOString(),
+            session: {
+              user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+          },
+        });
+        if (auditError) console.error("Failed to write audit entry", auditError);
+
+        return {
+          count: 1,
+          smsQueued,
+          notifyRequested: notifyParent,
+          hasPhone: Boolean(phone),
+          evidenceNote: dropped.length
+            ? "Evidence not stored (database not updated)"
+            : evidence.usedFallback
+              ? "Photo upload failed — a small copy was saved"
+              : evidenceFile
+                ? "Evidence attached"
+                : null,
+        };
+      } else {
+        // Multiple students mode
+        if (selectedStudentIds.size === 0 || !termId) throw new Error("Select students and an active term first.");
+
+        // Upload evidence once to be reused
+        const evidence = await uploadEvidence(evidenceFile, schoolId);
+        const meritPointsValue = Number.parseInt(meritPoints, 10);
+
+        const offense = offensesQuery.data?.find((o) => o.id === offenseId);
+        const goodDeedCategory = goodDeedCategoriesQuery.data?.find((c) => c.id === goodDeedCategoryId);
+        const label = entryType === "deduction" ? "Deduction" : entryType === "restoration" ? "Restoration" : "Good deed";
+        const cause = entryType === "good_deed"
+          ? goodDeedCategory?.name || reason.trim() || "good conduct"
+          : offense?.title || reason.trim() || "conduct review";
+
+        const studentIds = Array.from(selectedStudentIds);
+        const logsToInsert = studentIds.map(sid => ({
+          student_id: sid,
           term_id: termId,
           offense_id: offenseId || null,
           good_deed_category_id: goodDeedCategoryId || null,
@@ -289,80 +430,106 @@ function ConductActionsPage() {
           recorded_by: user?.id ?? null,
           evidence_path: evidence.evidence_path,
           evidence_url: evidence.evidence_url,
-        },
-        ["evidence_path", "evidence_url", "good_deed_category_id", "merit_points"],
-      );
+        }));
 
-      const offense = offensesQuery.data?.find((o) => o.id === offenseId);
-      const goodDeedCategory = goodDeedCategoriesQuery.data?.find((c) => c.id === goodDeedCategoryId);
-      const label = entryType === "deduction" ? "Deduction" : entryType === "restoration" ? "Restoration" : "Good deed";
-      const cause = entryType === "good_deed"
-        ? goodDeedCategory?.name || reason.trim() || "good conduct"
-        : offense?.title || reason.trim() || "conduct review";
-      const startingMarks = balanceQuery.data?.starting_marks ?? 40;
-      const resultingBalance = newBalance ?? currentBalance ?? startingMarks;
+        // Insert all conduct logs at once (cast to any to bypass outdated Supabase types)
+        const { data: logs, error: logError } = await supabase
+          .from("conduct_logs")
+          .insert(logsToInsert as any)
+          .select("id, student_id");
 
-      let smsQueued = false;
-      const phone = selectedStudent?.parent_phone ?? null;
-      if (notifyParent && phone) {
-        const messageBody = entryType === "good_deed"
-          ? `Good news from ${schoolSettings?.school_name ?? "School"}! ${selectedStudent?.full_name} was recognised for ${cause}.${markValue > 0 ? ` Conduct: ${resultingBalance}/${startingMarks}.` : ""} Thank you for raising a responsible child.`
-          : `SCDMS Update: ${selectedStudent?.full_name} received a ${label} of ${markValue} marks for '${cause}'. Current Conduct Balance: ${resultingBalance}/${startingMarks}.`;
-        const { error: notifyError } = await supabase.from("notification_logs").insert({
-          conduct_log_id: log.id,
-          student_id: studentId,
-          recipient_phone: phone,
-          message_body: messageBody,
-          status: "pending",
-        });
-        if (notifyError) {
-          console.error("Failed to queue parent SMS", notifyError);
-        } else {
-          smsQueued = true;
+        if (logError) throw new Error(logError.message);
+
+        // Queue parent messages
+        const messagesToQueue: any[] = [];
+        let messagesQueued = 0;
+        let studentsWithoutPhone = 0;
+
+        if (notifyParent) {
+          for (const log of (logs ?? [])) {
+            const student = students.find(s => s.id === log.student_id);
+            if (!student) continue;
+
+            if (student.parent_phone) {
+              const messageBody = entryType === "good_deed"
+                ? `Good news from ${schoolSettings?.school_name ?? "School"}! ${student.full_name} was recognised for ${cause}. Thank you for raising a responsible child.`
+                : `SCDMS Update: ${student.full_name} received a ${label} of ${markValue} marks for '${cause}'.`;
+
+              messagesToQueue.push({
+                conduct_log_id: log.id,
+                student_id: log.student_id,
+                recipient_phone: student.parent_phone,
+                message_body: messageBody,
+                status: "pending",
+              });
+              messagesQueued++;
+            } else {
+              studentsWithoutPhone++;
+            }
+          }
+
+          if (messagesToQueue.length > 0) {
+            const { error: notifyError } = await supabase
+              .from("notification_logs")
+              .insert(messagesToQueue);
+            if (notifyError) {
+              console.error("Failed to queue parent SMS", notifyError);
+            }
+          }
         }
-      }
 
-      const auditAction = entryType === "good_deed" ? "CREATE_GOOD_DEED" : "CREATE_CONDUCT_LOG";
-      const { error: auditError } = await supabase.from("audit_logs").insert({
-        user_id: user?.id ?? null,
-        action: auditAction,
-        entity_type: "conduct_logs",
-        entity_id: log.id,
-        payload: {
-          student_id: studentId,
-          action_type: entryType,
-          marks_changed: entryType === "deduction" ? -markValue : markValue,
-          timestamp: new Date().toISOString(),
-          session: {
-            user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Create audit logs for each entry
+        const auditAction = entryType === "good_deed" ? "CREATE_GOOD_DEED" : "CREATE_CONDUCT_LOG";
+        const auditLogs = (logs ?? []).map(log => ({
+          user_id: user?.id ?? null,
+          action: auditAction,
+          entity_type: "conduct_logs",
+          entity_id: log.id,
+          payload: {
+            student_id: log.student_id,
+            action_type: entryType,
+            marks_changed: entryType === "deduction" ? -markValue : markValue,
+            timestamp: new Date().toISOString(),
+            bulk_entry: true,
           },
-        },
-      });
-      if (auditError) console.error("Failed to write audit entry", auditError);
+        }));
 
-      return {
-        smsQueued,
-        notifyRequested: notifyParent,
-        hasPhone: Boolean(phone),
-        evidenceNote: dropped.length
-          ? "Evidence not stored (database not updated)"
-          : evidence.usedFallback
-            ? "Photo upload failed — a small copy was saved"
-            : evidenceFile
-              ? "Evidence attached"
-              : null,
-      };
+        if (auditLogs.length > 0) {
+          const { error: auditError } = await supabase.from("audit_logs").insert(auditLogs);
+          if (auditError) console.error("Failed to write audit entries", auditError);
+        }
+
+        return {
+          count: studentIds.length,
+          messagesQueued,
+          studentsWithoutPhone,
+          notifyRequested: notifyParent,
+        };
+      }
     },
     onSuccess: async (result) => {
-      const smsLine = result.smsQueued
-        ? "SMS queued to parent"
-        : result.notifyRequested && !result.hasPhone
-          ? "No parent phone on file — SMS skipped"
-          : "SMS not sent";
-      toast.success("Conduct log recorded successfully", {
-        description: `Ledger entry saved · ${smsLine}${result.evidenceNote ? ` · ${result.evidenceNote}` : ""}`,
-      });
+      if (selectionMode === "one") {
+        const smsLine = result.smsQueued
+          ? "SMS queued to parent"
+          : result.notifyRequested && !result.hasPhone
+            ? "No parent phone on file — SMS skipped"
+            : "SMS not sent";
+        toast.success("Conduct log recorded successfully", {
+          description: `Ledger entry saved · ${smsLine}${result.evidenceNote ? ` · ${result.evidenceNote}` : ""}`,
+        });
+      } else {
+        const parts = [`Recorded for ${result.count} students`];
+        if (result.notifyRequested) {
+          if ((result.messagesQueued ?? 0) > 0) {
+            parts.push(`${result.messagesQueued} parent messages queued`);
+          }
+          if ((result.studentsWithoutPhone ?? 0) > 0) {
+            parts.push(`${result.studentsWithoutPhone} without a phone`);
+          }
+        }
+        toast.success(parts.join(" · "));
+      }
+
       setOffenseId("");
       setGoodDeedCategoryId("");
       setReason("");
@@ -371,6 +538,7 @@ function ConductActionsPage() {
       setOccurredOn(todayISO());
       setEvidenceFile(null);
       setEvidenceKey((k) => k + 1);
+      setSelectedStudentIds(new Set());
       await queryClient.invalidateQueries({ queryKey: ["balance"] });
       await queryClient.invalidateQueries({ queryKey: ["conduct-logs", schoolId] });
       await queryClient.invalidateQueries({ queryKey: ["notification-logs", schoolId] });
@@ -433,8 +601,50 @@ function ConductActionsPage() {
           </p>
 
           <div className="mt-6 space-y-5">
-            {/* Student combobox */}
-            <div className="relative">
+            {/* Mode toggle */}
+            <div>
+              <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                Student selection
+              </label>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectionMode("one");
+                    setSelectedStudentIds(new Set());
+                    setSelectedClassLevel("");
+                    setSelectedStream("");
+                  }}
+                  className={
+                    selectionMode === "one"
+                      ? "rounded-xl bg-brand px-4 py-2.5 text-center text-[13px] font-semibold text-white shadow-brand-glow"
+                      : "rounded-xl px-4 py-2.5 text-center text-[13px] font-semibold text-soft transition hover:text-ink"
+                  }
+                >
+                  One student
+                  <span className="block text-[10px] font-medium opacity-70">Individual entry</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectionMode("several");
+                    setStudentId("");
+                  }}
+                  className={
+                    selectionMode === "several"
+                      ? "rounded-xl bg-brand px-4 py-2.5 text-center text-[13px] font-semibold text-white shadow-brand-glow"
+                      : "rounded-xl px-4 py-2.5 text-center text-[13px] font-semibold text-soft transition hover:text-ink"
+                  }
+                >
+                  Several students
+                  <span className="block text-[10px] font-medium opacity-70">Bulk entry</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Student selection (conditional based on mode) */}
+            {selectionMode === "one" ? (
+              <div className="relative">
               <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
                 Student
               </label>
@@ -481,6 +691,113 @@ function ConductActionsPage() {
                 </div>
               )}
             </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Class level and stream selection */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                      Class level
+                    </label>
+                    <select
+                      value={selectedClassLevel}
+                      onChange={(e) => {
+                        setSelectedClassLevel(e.target.value);
+                        setSelectedStream("");
+                        setSelectedStudentIds(new Set());
+                      }}
+                      className={inputClass}
+                    >
+                      <option value="">Choose level...</option>
+                      {classLevels.map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                      Stream (optional)
+                    </label>
+                    <select
+                      value={selectedStream}
+                      onChange={(e) => {
+                        setSelectedStream(e.target.value);
+                        setSelectedStudentIds(new Set());
+                      }}
+                      className={inputClass}
+                      disabled={!selectedClassLevel}
+                    >
+                      <option value="">All streams</option>
+                      {streams.map((stream) => (
+                        <option key={stream} value={stream}>
+                          {stream}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Student checklist */}
+                {matchingStudents.length > 0 && (
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                        Students ({selectedStudentIds.size} selected)
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedStudentIds(new Set(matchingStudents.map(s => s.id)));
+                          }}
+                          className="text-[11px] font-semibold text-brand underline"
+                        >
+                          Select all
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedStudentIds(new Set());
+                          }}
+                          className="text-[11px] font-semibold text-soft underline"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-64 space-y-1 overflow-y-auto rounded-2xl border border-glass-line bg-glass-soft p-2">
+                      {matchingStudents.map((student) => (
+                        <label
+                          key={student.id}
+                          className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-glass-bright"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedStudentIds.has(student.id)}
+                            onChange={(e) => {
+                              const newSet = new Set(selectedStudentIds);
+                              if (e.target.checked) {
+                                newSet.add(student.id);
+                              } else {
+                                newSet.delete(student.id);
+                              }
+                              setSelectedStudentIds(newSet);
+                            }}
+                            className="h-4 w-4 cursor-pointer"
+                          />
+                          <span className="flex-1 text-[13px] font-semibold text-ink">{student.full_name}</span>
+                          <span className="text-[11px] text-soft">
+                            {student.admission_no} · {student.class_name}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Action type toggle */}
             <div>

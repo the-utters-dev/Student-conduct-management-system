@@ -741,3 +741,92 @@ export const setStaffTemporaryPassword = createServerFn({ method: "POST" })
     // Return the temporary password (to be shown ONCE)
     return { password: tempPassword };
   });
+
+/**
+ * Creates a user account without sending an email (for School Directors).
+ * Only School Directors can create accounts in their own school.
+ * Cannot create system_admin accounts.
+ * Returns the user ID and temporary password.
+ */
+export const createSchoolAccountWithoutEmail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { email: string; full_name: string; role: SchoolRole }) => {
+    const email = String(d.email ?? "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
+    const full_name = String(d.full_name ?? "").trim();
+    if (full_name.length < 2 || full_name.length > 120) {
+      throw new Error("Full name must be 2-120 characters.");
+    }
+    if (!SCHOOL_ROLES.includes(d.role)) {
+      throw new Error("Invalid role. Must be one of: School Director, Master of Discipline, Matron, Patron.");
+    }
+    return { email, full_name, role: d.role };
+  })
+  .handler(async ({ data, context }) => {
+    const { schoolId, admin } = await requireSchoolDirector(context as never);
+    const callerId = (context as { userId: string }).userId;
+
+    // Generate a strong 10-character password
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*";
+    let tempPassword = "";
+    const array = new Uint8Array(10);
+    crypto.getRandomValues(array);
+    for (let i = 0; i < 10; i++) {
+      tempPassword += chars[array[i]! % chars.length];
+    }
+
+    // Create user with admin API
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email: data.email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: {
+        full_name: data.full_name,
+        must_change_password: true
+      },
+    });
+
+    if (error) {
+      if (error.message.includes("already registered") || error.message.includes("duplicate")) {
+        throw new Error(`A user with email ${data.email} already exists.`);
+      }
+      throw new Error(`Failed to create account: ${error.message}`);
+    }
+
+    const newUserId = created.user.id;
+
+    // Assign school
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({ school_id: schoolId })
+      .eq("id", newUserId);
+
+    if (profileError) {
+      throw new Error(`User created but school assignment failed: ${profileError.message}`);
+    }
+
+    // Assign role
+    const { error: roleError } = await admin
+      .from("user_roles")
+      .insert({ user_id: newUserId, role: data.role });
+
+    if (roleError) {
+      throw new Error(`User created but role assignment failed: ${roleError.message}`);
+    }
+
+    // Write audit log
+    await admin.from("audit_logs").insert({
+      school_id: schoolId,
+      user_id: callerId,
+      action: "CREATE_ACCOUNT_NO_EMAIL",
+      entity_type: "auth",
+      entity_id: newUserId,
+      payload: {
+        email: data.email,
+        full_name: data.full_name,
+        role: data.role
+      },
+    });
+
+    return { user_id: newUserId, password: tempPassword };
+  });

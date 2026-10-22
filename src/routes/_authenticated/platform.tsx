@@ -18,6 +18,7 @@ import {
   SCHOOL_STATUSES,
   STAFF_ROLES,
   assignStaff,
+  createAccountWithoutEmail,
   createSchool,
   deleteSchool,
   downloadSchoolData,
@@ -67,6 +68,7 @@ function PlatformPage() {
   const updateFn = useServerFn(updateSchool);
   const assignFn = useServerFn(assignStaff);
   const inviteFn = useServerFn(inviteStaff);
+  const createAccountFn = useServerFn(createAccountWithoutEmail);
   const renameFn = useServerFn(renameSchool);
   const updateStatusFn = useServerFn(updateSchoolStatus);
   const deleteFn = useServerFn(deleteSchool);
@@ -310,65 +312,89 @@ function PlatformPage() {
 
       {tab === "staff" && (
         <div className="space-y-5">
-          <form
-            className={`${card} flex flex-wrap gap-2`}
-            onSubmit={(e) => {
-              e.preventDefault();
-              run.mutate(() =>
-                inviteFn({ data: { ...invite, redirect_to: `${window.location.origin}/auth` } }).then(() =>
-                  setInvite({ email: "", full_name: "", school_id: "", role: "master_of_discipline" })
-                )
-              );
-            }}
-          >
-            <input
-              placeholder="Email"
-              value={invite.email}
-              onChange={(e) => setInvite({ ...invite, email: e.target.value })}
-              className={field}
-            />
-            <input
-              placeholder="Full name"
-              value={invite.full_name}
-              onChange={(e) => setInvite({ ...invite, full_name: e.target.value })}
-              className={field}
-            />
-            <select
-              value={invite.school_id}
-              onChange={(e) => setInvite({ ...invite, school_id: e.target.value })}
-              className={field}
+          <div className={card}>
+            <h3 className="mb-3 text-sm font-semibold text-soft">Add new staff member</h3>
+            <form
+              className="flex flex-wrap gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+              }}
             >
-              <option value="">Choose school</option>
-              {schools.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={invite.role}
-              onChange={(e) => setInvite({ ...invite, role: e.target.value as StaffRole })}
-              className={field}
-            >
-              {STAFF_ROLES.filter((r) => !r.includes("legacy")).map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_LABELS[r]}
-                </option>
-              ))}
-            </select>
-            <button className="rounded-2xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand">
-              Send invite
-            </button>
-          </form>
+              <input
+                placeholder="Email"
+                value={invite.email}
+                onChange={(e) => setInvite({ ...invite, email: e.target.value })}
+                className={field}
+              />
+              <input
+                placeholder="Full name"
+                value={invite.full_name}
+                onChange={(e) => setInvite({ ...invite, full_name: e.target.value })}
+                className={field}
+              />
+              <select
+                value={invite.school_id}
+                onChange={(e) => setInvite({ ...invite, school_id: e.target.value })}
+                className={field}
+              >
+                <option value="">Choose school</option>
+                {schools.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={invite.role}
+                onChange={(e) => setInvite({ ...invite, role: e.target.value as StaffRole })}
+                className={field}
+              >
+                {STAFF_ROLES.filter((r) => !r.includes("legacy")).map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  run.mutate(() =>
+                    inviteFn({ data: { ...invite, redirect_to: `${window.location.origin}/auth` } }).then(() =>
+                      setInvite({ email: "", full_name: "", school_id: "", role: "master_of_discipline" })
+                    )
+                  );
+                }}
+                className="rounded-2xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand"
+              >
+                Send invite
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const result = await createAccountFn({ data: invite });
+                    setTempPasswordDialog({ password: result.password, userName: invite.full_name || invite.email });
+                    setInvite({ email: "", full_name: "", school_id: "", role: "master_of_discipline" });
+                    void refresh();
+                  } catch (err) {
+                    toast.error((err as Error).message);
+                  }
+                }}
+                className="rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-on-brand"
+              >
+                Create account (no email)
+              </button>
+            </form>
+          </div>
           <div className={card}>
             <h3 className="mb-4 text-sm font-semibold text-soft">Assign staff to schools</h3>
             {staff
               .filter((p) => !p.roles.includes("system_admin"))
               .map((p) => {
-                // Determine current role (prefer new roles over legacy)
-                const role: StaffRole =
+                // Determine current role (prefer new roles over legacy, null if none found)
+                const role: StaffRole | "" =
                   (p.roles.find((r) => ["school_director", "master_of_discipline", "matron", "patron"].includes(r)) as StaffRole) ||
-                  (p.roles.includes("school_leader") ? "school_leader" : "discipline_admin");
+                  "";
 
                 return (
                   <div
@@ -383,7 +409,7 @@ function PlatformPage() {
                       value={p.school_id ?? ""}
                       onChange={(e) =>
                         run.mutate(() =>
-                          assignFn({ data: { user_id: p.id, school_id: e.target.value || null, role } })
+                          assignFn({ data: { user_id: p.id, school_id: e.target.value || null, role: role || "master_of_discipline" } })
                         )
                       }
                       className={field}
@@ -404,7 +430,8 @@ function PlatformPage() {
                       }
                       className={field}
                     >
-                      {STAFF_ROLES.map((r) => (
+                      <option value="">Choose role\u2026</option>
+                      {STAFF_ROLES.filter((r) => !r.includes("legacy")).map((r) => (
                         <option key={r} value={r}>
                           {ROLE_LABELS[r]}
                         </option>

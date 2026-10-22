@@ -506,3 +506,113 @@ export const setTemporaryPassword = createServerFn({ method: "POST" })
     // Return the temporary password (to be shown ONCE)
     return { password: tempPassword };
   });
+
+/**
+ * Creates a user account without sending an email.
+ * Platform admins can create accounts in any school.
+ * School Directors can only create accounts in their own school, and cannot create system_admin.
+ * Returns the user ID and temporary password.
+ */
+export const createAccountWithoutEmail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { email: string; full_name: string; school_id: string; role: StaffRole }) => {
+    const email = String(d.email ?? "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
+    if (!UUID.test(d.school_id)) throw new Error("Choose a school.");
+    if (!STAFF_ROLES.includes(d.role)) throw new Error("Unknown role.");
+    if (d.role === "discipline_admin" || d.role === "school_leader") {
+      throw new Error("Legacy roles cannot be assigned to new accounts.");
+    }
+    return { ...d, email, full_name: String(d.full_name ?? "").trim().slice(0, 120) };
+  })
+  .handler(async ({ data, context }) => {
+    const userId = (context as { userId: string }).userId;
+    const { supabase } = context as { supabase: SupabaseClient };
+
+    // Check if caller is platform admin or school director
+    const { data: callerRoles } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .in("role", ["system_admin", "school_director", "school_leader"]);
+
+    const isPlatformAdmin = callerRoles?.some((r) => r.role === "system_admin");
+    const isSchoolDirector = callerRoles?.some((r) => r.role === "school_director" || r.role === "school_leader");
+
+    if (!isPlatformAdmin && !isSchoolDirector) {
+      throw new Error("Only System Administrators or School Directors can create accounts.");
+    }
+
+    // If not platform admin, verify they're creating for their own school
+    if (!isPlatformAdmin) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: callerProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("school_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (callerProfile?.school_id !== data.school_id) {
+        throw new Error("School Directors can only create accounts for their own school.");
+      }
+    }
+
+    // Note: system_admin role is not in StaffRole type (it's a platform-only role)
+
+    const admin = isPlatformAdmin
+      ? await adminFor(context as never)
+      : (await import("@/integrations/supabase/client.server")).supabaseAdmin as unknown as SupabaseClient;
+
+    // Generate a strong 10-character password
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*";
+    let tempPassword = "";
+    const array = new Uint8Array(10);
+    crypto.getRandomValues(array);
+    for (let i = 0; i < 10; i++) {
+      tempPassword += chars[array[i]! % chars.length];
+    }
+
+    // Create user with admin API
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email: data.email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: {
+        full_name: data.full_name,
+        must_change_password: true
+      },
+    });
+
+    if (error) {
+      if (error.message.includes("already registered") || error.message.includes("duplicate")) {
+        throw new Error(`A user with email ${data.email} already exists.`);
+      }
+      throw new Error(`Failed to create account: ${error.message}`);
+    }
+
+    const newUserId = created.user.id;
+
+    // Assign school and role
+    const { error: pErr } = await admin.from("profiles").update({ school_id: data.school_id }).eq("id", newUserId);
+    const err = missingSetup(pErr);
+    if (err) throw err;
+
+    await setStaffRole(admin, newUserId, data.role);
+
+    // Write audit log
+    await admin.from("audit_logs").insert({
+      user_id: userId,
+      action: "CREATE_ACCOUNT_NO_EMAIL",
+      entity_type: "auth",
+      entity_id: newUserId,
+      payload: {
+        email: data.email,
+        full_name: data.full_name,
+        school_id: data.school_id,
+        role: data.role
+      },
+      school_id: data.school_id,
+    });
+
+    return { user_id: newUserId, password: tempPassword };
+  });
