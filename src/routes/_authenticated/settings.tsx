@@ -51,6 +51,7 @@ const btn = "rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand s
 function SettingsPage() {
   const { isSchoolDirector, can } = useAuth();
   const showCategories = isSchoolDirector || can("manage_offences");
+  const showOffences = isSchoolDirector || can("manage_offences");
   const showCalendar = isSchoolDirector || can("manage_terms");
   return (
     <DashboardShell greeting="Settings" dateLine="Profile, appearance & system preferences">
@@ -60,6 +61,7 @@ function SettingsPage() {
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="system">System Preferences</TabsTrigger>
           {showCalendar && <TabsTrigger value="calendar">Academic Calendar</TabsTrigger>}
+          {showOffences && <TabsTrigger value="offences">Offences</TabsTrigger>}
           {showCategories && <TabsTrigger value="categories">Good Deed Categories</TabsTrigger>}
           {isSchoolDirector && <TabsTrigger value="staff">Staff & Roles</TabsTrigger>}
         </TabsList>
@@ -67,6 +69,7 @@ function SettingsPage() {
         <TabsContent value="appearance"><AppearanceTab /></TabsContent>
         <TabsContent value="system"><SystemTab /></TabsContent>
         {showCalendar && <TabsContent value="calendar"><CalendarTab /></TabsContent>}
+        {showOffences && <TabsContent value="offences"><OffencesTab /></TabsContent>}
         {showCategories && <TabsContent value="categories"><CategoriesTab /></TabsContent>}
         {isSchoolDirector && <TabsContent value="staff"><StaffTab /></TabsContent>}
       </Tabs>
@@ -722,6 +725,365 @@ interface GoodDeedCategory {
   name: string;
   default_merit_points: number;
   is_active: boolean;
+}
+
+interface OffenceCategory {
+  id: string;
+  school_id: string;
+  name: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+interface Offence {
+  id: string;
+  school_id: string;
+  code: string;
+  title: string;
+  category: string | null;
+  category_id: string | null;
+  severity: string;
+  marks_deducted: number;
+  description: string | null;
+  is_active: boolean;
+}
+
+function OffencesTab() {
+  const { schoolId } = useAuth();
+  const qc = useQueryClient();
+  const [view, setView] = useState<"categories" | "offences">("categories");
+
+  // Categories state
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+
+  // Offences state
+  const [newOffence, setNewOffence] = useState({
+    code: "",
+    title: "",
+    category_id: "",
+    severity: "minor",
+    marks: 2,
+    description: "",
+  });
+  const [editingOffenceId, setEditingOffenceId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Fetch categories
+  const { data: categories } = useQuery({
+    queryKey: ["offence-categories", schoolId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("offence_categories" as never) as any)
+        .select("*")
+        .eq("school_id", schoolId)
+        .order("sort_order");
+      if (error) throw error;
+      return data as OffenceCategory[];
+    },
+    enabled: !!schoolId,
+  });
+
+  // Fetch offences
+  const { data: offences } = useQuery({
+    queryKey: ["offences-catalog", schoolId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("offenses_catalog" as never) as any)
+        .select("*")
+        .eq("school_id", schoolId)
+        .order("category", { ascending: true })
+        .order("code", { ascending: true });
+      if (error) throw error;
+      return data as Offence[];
+    },
+    enabled: !!schoolId,
+  });
+
+  // Category management functions
+  async function addCategory() {
+    if (!newCategoryName.trim()) {
+      toast.error("Category name is required");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("offence_categories" as never) as any).insert({
+        school_id: schoolId,
+        name: newCategoryName.trim(),
+        is_active: true,
+        sort_order: (categories?.length || 0) + 1,
+      });
+      if (error) throw error;
+      toast.success("Category added");
+      setNewCategoryName("");
+      void qc.invalidateQueries({ queryKey: ["offence-categories", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateCategory(id: string, name: string) {
+    if (!name.trim()) {
+      toast.error("Category name cannot be empty");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("offence_categories" as never) as any)
+        .update({ name: name.trim() })
+        .eq("id", id);
+      if (error) throw error;
+      toast.success("Category renamed");
+      setEditingCategoryId(null);
+      void qc.invalidateQueries({ queryKey: ["offence-categories", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleCategoryActive(id: string, isActive: boolean) {
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("offence_categories" as never) as any)
+        .update({ is_active: isActive })
+        .eq("id", id);
+      if (error) throw error;
+      toast.success(isActive ? "Category activated" : "Category deactivated");
+      void qc.invalidateQueries({ queryKey: ["offence-categories", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Offence management functions
+  async function addOffence() {
+    if (!newOffence.code.trim() || !newOffence.title.trim()) {
+      toast.error("Code and title are required");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("offenses_catalog" as never) as any).insert({
+        school_id: schoolId,
+        code: newOffence.code.trim(),
+        title: newOffence.title.trim(),
+        category_id: newOffence.category_id || null,
+        category: categories?.find(c => c.id === newOffence.category_id)?.name || null,
+        severity: newOffence.severity,
+        marks_deducted: newOffence.marks,
+        description: newOffence.description.trim() || null,
+        is_active: true,
+      });
+      if (error) throw error;
+      toast.success("Offence added");
+      setNewOffence({ code: "", title: "", category_id: "", severity: "minor", marks: 2, description: "" });
+      void qc.invalidateQueries({ queryKey: ["offences-catalog", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleOffenceActive(id: string, isActive: boolean) {
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("offenses_catalog" as never) as any)
+        .update({ is_active: isActive })
+        .eq("id", id);
+      if (error) throw error;
+      toast.success(isActive ? "Offence activated" : "Offence deactivated");
+      void qc.invalidateQueries({ queryKey: ["offences-catalog", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const activeCategories = categories?.filter(c => c.is_active) || [];
+  const groupedOffences = offences?.reduce((acc, off) => {
+    const cat = off.category || "Uncategorized";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(off);
+    return acc;
+  }, {} as Record<string, Offence[]>);
+
+  return (
+    <div className="space-y-6">
+      {/* View toggle */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setView("categories")}
+          className={view === "categories" ? btn : "rounded-xl px-4 py-2 text-sm text-soft hover:text-ink"}
+        >
+          Categories
+        </button>
+        <button
+          onClick={() => setView("offences")}
+          className={view === "offences" ? btn : "rounded-xl px-4 py-2 text-sm text-soft hover:text-ink"}
+        >
+          Offences
+        </button>
+      </div>
+
+      {view === "categories" && (
+        <div className={panel}>
+          <h3 className="mb-4 font-display text-lg font-bold text-ink">Offence Categories</h3>
+
+          {/* Add category */}
+          <div className="mb-4 flex gap-2">
+            <input
+              type="text"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="New category name"
+              className={inp}
+              onKeyDown={(e) => e.key === "Enter" && addCategory()}
+            />
+            <button onClick={addCategory} disabled={busy} className={btn}>Add</button>
+          </div>
+
+          {/* Categories list */}
+          <div className="space-y-2">
+            {categories?.map((cat) => (
+              <div key={cat.id} className="flex items-center gap-2 rounded-xl bg-glass-bright p-3">
+                {editingCategoryId === cat.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editCategoryName}
+                      onChange={(e) => setEditCategoryName(e.target.value)}
+                      className={inp + " flex-1"}
+                    />
+                    <button onClick={() => updateCategory(cat.id, editCategoryName)} className="text-sm text-ok">
+                      Save
+                    </button>
+                    <button onClick={() => setEditingCategoryId(null)} className="text-sm text-soft">
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm font-medium text-ink">{cat.name}</span>
+                    <button
+                      onClick={() => {
+                        setEditingCategoryId(cat.id);
+                        setEditCategoryName(cat.name);
+                      }}
+                      className="text-sm text-brand"
+                    >
+                      Rename
+                    </button>
+                    <button
+                      onClick={() => toggleCategoryActive(cat.id, !cat.is_active)}
+                      className={`text-sm ${cat.is_active ? "text-warn" : "text-ok"}`}
+                    >
+                      {cat.is_active ? "Deactivate" : "Activate"}
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {view === "offences" && (
+        <div className={panel}>
+          <h3 className="mb-4 font-display text-lg font-bold text-ink">Manage Offences</h3>
+
+          {/* Add offence form */}
+          <div className="mb-6 space-y-3 rounded-xl bg-glass-bright p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                type="text"
+                value={newOffence.code}
+                onChange={(e) => setNewOffence({ ...newOffence, code: e.target.value })}
+                placeholder="Code (e.g., A01)"
+                className={inp}
+              />
+              <input
+                type="text"
+                value={newOffence.title}
+                onChange={(e) => setNewOffence({ ...newOffence, title: e.target.value })}
+                placeholder="Title"
+                className={inp}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <select
+                value={newOffence.category_id}
+                onChange={(e) => setNewOffence({ ...newOffence, category_id: e.target.value })}
+                className={inp}
+              >
+                <option value="">Select category</option>
+                {activeCategories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <select
+                value={newOffence.severity}
+                onChange={(e) => setNewOffence({ ...newOffence, severity: e.target.value })}
+                className={inp}
+              >
+                <option value="minor">Minor</option>
+                <option value="moderate">Moderate</option>
+                <option value="serious">Serious</option>
+                <option value="critical">Critical</option>
+              </select>
+              <input
+                type="number"
+                value={newOffence.marks}
+                onChange={(e) => setNewOffence({ ...newOffence, marks: parseInt(e.target.value) || 0 })}
+                placeholder="Marks"
+                className={inp}
+              />
+            </div>
+            <input
+              type="text"
+              value={newOffence.description}
+              onChange={(e) => setNewOffence({ ...newOffence, description: e.target.value })}
+              placeholder="Description (optional)"
+              className={inp}
+            />
+            <button onClick={addOffence} disabled={busy} className={btn}>Add Offence</button>
+          </div>
+
+          {/* Offences list grouped by category */}
+          <div className="space-y-4">
+            {Object.entries(groupedOffences || {}).map(([category, offs]) => (
+              <div key={category}>
+                <h4 className="mb-2 text-sm font-bold text-soft">{category}</h4>
+                <div className="space-y-1">
+                  {offs.map((off) => (
+                    <div key={off.id} className="flex items-center gap-2 rounded-lg bg-glass-bright p-2 text-sm">
+                      <span className="w-16 font-mono text-xs text-soft">{off.code}</span>
+                      <span className="flex-1 text-ink">{off.title}</span>
+                      <span className="text-xs text-faint">{off.severity}</span>
+                      <span className="text-xs text-faint">-{off.marks_deducted}</span>
+                      <button
+                        onClick={() => toggleOffenceActive(off.id, !off.is_active)}
+                        className={`text-xs ${off.is_active ? "text-ok" : "text-faint"}`}
+                      >
+                        {off.is_active ? "Active" : "Inactive"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CategoriesTab() {

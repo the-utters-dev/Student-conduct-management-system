@@ -21,19 +21,20 @@ function CertificatePage() {
         .select(`
           id,
           occurred_on,
-          details,
+          reason,
+          good_deed_category_id,
           students!inner(full_name, class_name, admission_no),
           good_deed_categories(name)
         `)
         .eq("id", params.entryId)
-        .eq("school_id", schoolId)
         .eq("entry_type", "good_deed")
         .single();
       if (error) throw error;
       return data as {
         id: string;
         occurred_on: string;
-        details: string | null;
+        reason: string | null;
+        good_deed_category_id: string | null;
         students: { full_name: string; class_name: string; admission_no: string };
         good_deed_categories: { name: string } | null;
       };
@@ -67,7 +68,7 @@ function CertificatePage() {
 
   const schoolName = school?.school_name ?? "School";
   const logoUrl = school?.logo_url;
-  const categoryName = entry.good_deed_categories?.name ?? entry.details ?? "Good Conduct";
+  const categoryName = entry.good_deed_categories?.name ?? entry.reason ?? "Good Conduct";
   const date = new Date(entry.occurred_on).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
@@ -137,7 +138,7 @@ function CertificatePage() {
                 className={entry.students.class_name}
                 categoryName={categoryName}
                 date={date}
-                details={entry.details}
+                reason={entry.reason}
               />
             </div>
           </div>
@@ -153,7 +154,7 @@ function CertificatePage() {
             className={entry.students.class_name}
             categoryName={categoryName}
             date={date}
-            details={entry.details}
+            reason={entry.reason}
           />
         </div>
       </div>
@@ -168,7 +169,7 @@ function CertificateContent({
   className: studentClass,
   categoryName,
   date,
-  details,
+  reason,
 }: {
   schoolName: string;
   logoUrl: string | null | undefined;
@@ -176,7 +177,7 @@ function CertificateContent({
   className: string;
   categoryName: string;
   date: string;
-  details: string | null;
+  reason: string | null;
 }) {
   return (
     <div className="flex flex-col items-center text-center">
@@ -218,8 +219,8 @@ function CertificateContent({
 
         <p className="font-display text-2xl font-bold text-ok">{categoryName}</p>
 
-        {details && (
-          <p className="italic text-soft">{details}</p>
+        {reason && (
+          <p className="italic text-soft">{reason}</p>
         )}
 
         <p className="text-lg text-ink">

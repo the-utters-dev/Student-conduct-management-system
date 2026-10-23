@@ -341,6 +341,7 @@ function ConductActionsPage() {
           "conduct_logs",
           {
             student_id: studentId,
+            school_id: schoolId,
             term_id: termId,
             offense_id: offenseId || null,
             good_deed_category_id: goodDeedCategoryId || null,
@@ -438,6 +439,7 @@ function ConductActionsPage() {
 
         const logsToInsert = targetStudentIds.map(sid => ({
           student_id: sid,
+          school_id: schoolId,
           term_id: termId,
           offense_id: offenseId || null,
           good_deed_category_id: goodDeedCategoryId || null,
@@ -1072,11 +1074,11 @@ function ConductActionsPage() {
                   <span className="block text-[13px] font-semibold text-ink">
                     {entryType === "good_deed" ? "Send appreciation to parent" : "Notify parent via SMS"}
                   </span>
-                  <span className="block text-[11px] text-soft">
+                  <span className={`block text-[11px] ${selectedStudent && !selectedStudent.parent_phone ? "text-warn" : "text-soft"}`}>
                     {selectedStudent
                       ? selectedStudent.parent_phone
                         ? `Queues a message to ${selectedStudent.parent_phone}`
-                        : "No parent phone on file for this student"
+                        : "No parent phone on file"
                       : "Queues a message to the parent number on file"}
                   </span>
                 </span>
