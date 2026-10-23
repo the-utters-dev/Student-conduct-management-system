@@ -1,8 +1,12 @@
+import React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/DashboardShell";
 import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { STANDING_CLASS, STANDING_LABEL, useConductStandings } from "@/hooks/useConductStandings";
+import { supabase } from "@/integrations/supabase/client";
+import { ParentMessageComposer } from "@/components/ParentMessageComposer";
 
 export const Route = createFileRoute("/_authenticated/")({
   head: () => ({
@@ -26,7 +30,7 @@ export const Route = createFileRoute("/_authenticated/")({
 });
 
 function Dashboard() {
-  const { profile, school: tenantSchool } = useAuth();
+  const { profile, school: tenantSchool, schoolId, isSchoolDirector } = useAuth();
   const { data: school } = useSchoolSettings();
   const schoolName = tenantSchool?.name || school?.school_name || "Your School";
   const { rows, atRisk, criticalCount, warningCount, isPending } = useConductStandings();
@@ -35,6 +39,10 @@ function Dashboard() {
     ? rows.reduce((s, r) => s + (r.current_marks ?? 0), 0) / totalStudents
     : 0;
   const goodCount = totalStudents - atRisk.length;
+
+  // Good deeds this term
+  const totalGoodDeeds = rows.reduce((sum, r) => sum + ((r as any).good_deeds_count ?? 0), 0);
+
   const KPI_CARDS = [
     {
       label: "Students at risk",
@@ -57,7 +65,100 @@ function Dashboard() {
       icon: "G",
       iconClass: "bg-ok/15 text-ok",
     },
+    {
+      label: "Good deeds this term",
+      value: isPending ? "…" : String(totalGoodDeeds),
+      note: `Recognition & positive conduct`,
+      icon: "★",
+      iconClass: "bg-ok/15 text-ok",
+    },
   ];
+  // Recent good deeds
+  const { data: recentGoodDeeds } = useQuery({
+    queryKey: ["recent-good-deeds", schoolId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("conduct_logs" as never) as any)
+        .select(`
+          id,
+          student_id,
+          occurred_on,
+          details,
+          students!inner(full_name, class_name),
+          good_deed_categories(name)
+        `)
+        .eq("school_id", schoolId)
+        .eq("entry_type", "good_deed")
+        .order("occurred_on", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return data as Array<{
+        id: string;
+        student_id: string;
+        occurred_on: string;
+        details: string | null;
+        students: { full_name: string; class_name: string };
+        good_deed_categories: { name: string } | null;
+      }>;
+    },
+    enabled: !!schoolId,
+  });
+
+  // Student of the Week (top 3 students by good deeds in last 7 days, no deductions)
+  const { data: studentOfWeek } = useQuery({
+    queryKey: ["student-of-week", schoolId],
+    queryFn: async () => {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const isoDate = sevenDaysAgo.toISOString().split("T")[0];
+
+      // Get students with good deeds in last 7 days
+      const { data: goodDeeds, error: gdError } = await (supabase.from("conduct_logs" as never) as any)
+        .select("student_id")
+        .eq("school_id", schoolId)
+        .eq("entry_type", "good_deed")
+        .gte("occurred_on", isoDate);
+      if (gdError) throw gdError;
+
+      // Get students with deductions in last 7 days
+      const { data: deductions, error: dedError } = await (supabase.from("conduct_logs" as never) as any)
+        .select("student_id")
+        .eq("school_id", schoolId)
+        .eq("entry_type", "deduction")
+        .gte("occurred_on", isoDate);
+      if (dedError) throw dedError;
+
+      const deductionStudentIds = new Set((deductions ?? []).map((d: any) => d.student_id));
+
+      // Count good deeds per student (excluding those with deductions)
+      const goodDeedCounts = new Map<string, number>();
+      for (const gd of goodDeeds ?? []) {
+        if (!deductionStudentIds.has(gd.student_id)) {
+          goodDeedCounts.set(gd.student_id, (goodDeedCounts.get(gd.student_id) ?? 0) + 1);
+        }
+      }
+
+      // Get top 3
+      const topStudentIds = Array.from(goodDeedCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([id]) => id);
+
+      if (topStudentIds.length === 0) return [];
+
+      // Fetch student details
+      const { data: students, error: stuError } = await (supabase.from("students" as never) as any)
+        .select("id, full_name, class_name, admission_no, parent_phone")
+        .in("id", topStudentIds);
+      if (stuError) throw stuError;
+
+      return students.map((s: any) => ({
+        ...s,
+        good_deeds_count: goodDeedCounts.get(s.id) ?? 0,
+      }));
+    },
+    enabled: !!schoolId && (isSchoolDirector),
+  });
+
   const now = new Date();
   const h = now.getHours();
   const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
@@ -68,7 +169,7 @@ function Dashboard() {
       greeting={`Good ${part}, ${name}`}
       dateLine={`${date} · ${schoolName}`}
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         {KPI_CARDS.map((card) => (
           <div
             key={card.label}
@@ -187,6 +288,122 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Recent Good Deeds & Student of the Week */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Recent Good Deeds */}
+        <div className="min-w-0 rounded-3xl border border-glass-line bg-glass p-3 shadow-panel backdrop-blur-2xl sm:p-5 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <div className="font-display text-[15px] font-bold text-ink">
+              Recent good deeds
+            </div>
+            <Link
+              to="/conduct-actions"
+              className="text-[12px] font-semibold text-brand hover:underline"
+            >
+              Record new
+            </Link>
+          </div>
+          <div className="mt-4 space-y-3">
+            {!recentGoodDeeds || recentGoodDeeds.length === 0 ? (
+              <div className="rounded-2xl bg-glass-bright px-4 py-6 text-center text-[13px] text-soft ring-1 ring-hairline">
+                No good deeds recorded yet this term. Recognise positive conduct in Conduct Actions.
+              </div>
+            ) : (
+              recentGoodDeeds.map((deed) => (
+                <div
+                  key={deed.id}
+                  className="flex flex-col gap-2 rounded-2xl bg-glass-bright p-3 ring-1 ring-hairline sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-4 sm:py-3"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ok/15 text-[18px] text-ok">
+                      ★
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-semibold text-ink">
+                        {deed.students.full_name}
+                      </div>
+                      <div className="break-words text-[12px] text-soft">
+                        {deed.good_deed_categories?.name ?? deed.details ?? "Good deed"} · {deed.students.class_name}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 whitespace-nowrap text-[11px] text-faint">
+                      {new Date(deed.occurred_on).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    </span>
+                    <a
+                      href={`/certificate/${deed.id}`}
+                      className="rounded-lg bg-brand px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-on-brand hover:bg-brand/90"
+                    >
+                      Certificate
+                    </a>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Student of the Week */}
+        {isSchoolDirector && (
+          <div className="min-w-0 rounded-3xl border border-glass-line bg-glass p-3 shadow-panel backdrop-blur-2xl sm:p-5 lg:col-span-1">
+            <div className="font-display text-[15px] font-bold text-ink">
+              Student of the Week
+            </div>
+            <p className="mt-1 text-[11px] text-soft">Top students by good deeds (last 7 days, no deductions)</p>
+            <div className="mt-4 space-y-2">
+              {!studentOfWeek || studentOfWeek.length === 0 ? (
+                <div className="rounded-2xl bg-glass-bright px-3 py-4 text-center text-[12px] text-soft ring-1 ring-hairline">
+                  No eligible students this week
+                </div>
+              ) : (
+                studentOfWeek.map((student: any, idx: number) => (
+                  <div
+                    key={student.id}
+                    className="flex items-center gap-3 rounded-xl bg-glass-bright p-3 ring-1 ring-hairline"
+                  >
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ok/15 text-[12px] font-bold text-ok">
+                      {idx + 1}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] font-semibold text-ink">
+                        {student.full_name}
+                      </div>
+                      <div className="text-[11px] text-soft">
+                        {student.class_name} · {student.good_deeds_count} good deed{student.good_deeds_count !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            {studentOfWeek && studentOfWeek.length > 0 && (
+              <StudentOfWeekCongratulations students={studentOfWeek} />
+            )}
+          </div>
+        )}
+      </div>
     </DashboardShell>
+  );
+}
+
+function StudentOfWeekCongratulations({ students }: { students: Array<{ id: string; full_name: string; class_name: string; parent_phone: string | null; good_deeds_count: number }> }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-4 w-full rounded-xl bg-ok px-4 py-2 text-sm font-semibold text-white shadow-brand-glow"
+      >
+        Send congratulations
+      </button>
+      <ParentMessageComposer
+        open={open}
+        onOpenChange={setOpen}
+        prefilledStudentIds={students.map((s) => s.id)}
+        templateType="student_of_week"
+      />
+    </>
   );
 }

@@ -49,7 +49,8 @@ const inp = "w-full rounded-xl border border-input bg-background px-3 py-2 text-
 const btn = "rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand shadow-brand-glow disabled:opacity-60";
 
 function SettingsPage() {
-  const { isSchoolDirector } = useAuth();
+  const { isSchoolDirector, can } = useAuth();
+  const showCategories = isSchoolDirector || can("manage_offences");
   return (
     <DashboardShell greeting="Settings" dateLine="Profile, appearance & system preferences">
       <Tabs defaultValue="profile">
@@ -57,11 +58,13 @@ function SettingsPage() {
           <TabsTrigger value="profile">Profile & Avatar</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="system">System Preferences</TabsTrigger>
+          {showCategories && <TabsTrigger value="categories">Good Deed Categories</TabsTrigger>}
           {isSchoolDirector && <TabsTrigger value="staff">Staff & Roles</TabsTrigger>}
         </TabsList>
         <TabsContent value="profile"><ProfileTab /></TabsContent>
         <TabsContent value="appearance"><AppearanceTab /></TabsContent>
         <TabsContent value="system"><SystemTab /></TabsContent>
+        {showCategories && <TabsContent value="categories"><CategoriesTab /></TabsContent>}
         {isSchoolDirector && <TabsContent value="staff"><StaffTab /></TabsContent>}
       </Tabs>
     </DashboardShell>
@@ -303,6 +306,7 @@ function SystemTab() {
         critical_threshold: f.critical_threshold,
         warning_threshold: f.warning_threshold,
         notify_on_threshold: f.notify_on_threshold,
+        good_deed_reward_type: f.good_deed_reward_type ?? "recognition",
       }, schoolId);
       toast.success("System preferences saved");
       void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
@@ -336,10 +340,268 @@ function SystemTab() {
           <input type="checkbox" checked={f.notify_on_threshold} onChange={(e) => setF({ ...f, notify_on_threshold: e.target.checked })} />
           Notify when a student's balance crosses a threshold
         </label>
+        <label className="block text-xs font-semibold text-soft">
+          Good deed reward system
+          <select
+            className={`${inp} mt-1`}
+            value={f.good_deed_reward_type ?? "recognition"}
+            onChange={(e) => setF({ ...f, good_deed_reward_type: e.target.value as "recognition" | "merit_points" })}
+          >
+            <option value="recognition">Recognition only</option>
+            <option value="merit_points">Recognition + merit points</option>
+          </select>
+          <p className="mt-1 text-xs text-faint">
+            {f.good_deed_reward_type === "merit_points"
+              ? "Students earn merit points for good deeds. Conduct marks are never affected."
+              : "Good deeds are recorded for recognition only. No marks or points are given."}
+          </p>
+        </label>
         {err && <p className="text-sm text-danger">{err}</p>}
         <button className={btn} disabled={busy}>Save preferences</button>
       </fieldset>
     </form>
+  );
+}
+
+interface GoodDeedCategory {
+  id: string;
+  name: string;
+  default_merit_points: number;
+  is_active: boolean;
+}
+
+function CategoriesTab() {
+  const { schoolId } = useAuth();
+  const { data: settings } = useSchoolSettings();
+  const qc = useQueryClient();
+  const [newName, setNewName] = useState("");
+  const [newPoints, setNewPoints] = useState(1);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPoints, setEditPoints] = useState(1);
+  const [busy, setBusy] = useState(false);
+
+  const rewardType = settings?.good_deed_reward_type ?? "recognition";
+  const showPoints = rewardType === "merit_points";
+
+  // Fetch categories
+  const { data: categories, isLoading } = useQuery({
+    queryKey: ["good-deed-categories", schoolId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("good_deed_categories" as never) as any)
+        .select("*")
+        .eq("school_id", schoolId)
+        .order("name");
+      if (error) throw error;
+      return data as GoodDeedCategory[];
+    },
+    enabled: !!schoolId,
+  });
+
+  async function addCategory() {
+    if (!newName.trim()) {
+      toast.error("Category name is required");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("good_deed_categories" as never) as any).insert({
+        school_id: schoolId,
+        name: newName.trim(),
+        default_merit_points: showPoints ? newPoints : 0,
+        is_active: true,
+      });
+      if (error) throw error;
+      toast.success("Category added");
+      setNewName("");
+      setNewPoints(1);
+      void qc.invalidateQueries({ queryKey: ["good-deed-categories", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateCategory(id: string, updates: Partial<GoodDeedCategory>) {
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("good_deed_categories" as never) as any)
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+      toast.success("Category updated");
+      setEditingId(null);
+      void qc.invalidateQueries({ queryKey: ["good-deed-categories", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleActive(id: string, isActive: boolean) {
+    await updateCategory(id, { is_active: isActive });
+  }
+
+  function startEdit(category: GoodDeedCategory) {
+    setEditingId(category.id);
+    setEditName(category.name);
+    setEditPoints(category.default_merit_points);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+    setEditPoints(1);
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Reward type notice */}
+      <div className={panel}>
+        <div className="flex items-start gap-3">
+          <div className="text-2xl">ℹ️</div>
+          <div className="flex-1">
+            <h3 className="font-display text-lg font-bold text-ink">
+              {showPoints ? "Recognition + Merit Points" : "Recognition Only"}
+            </h3>
+            <p className="mt-1 text-sm text-soft">
+              {showPoints
+                ? "Students earn merit points for good deeds. You can set default points for each category below. Good deeds never affect conduct marks."
+                : "Good deeds are recorded for recognition only. Merit point fields are hidden. Change the reward system in System Preferences if you want to award points."}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Categories list */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Good Deed Categories</h3>
+        {isLoading ? (
+          <p className="mt-4 text-sm text-soft">Loading categories...</p>
+        ) : !categories || categories.length === 0 ? (
+          <p className="mt-4 text-sm text-soft">No categories yet. Add one below.</p>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                className="flex flex-col gap-3 rounded-xl border border-glass-line bg-glass-bright p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                {editingId === cat.id ? (
+                  <>
+                    <div className="flex-1 space-y-2">
+                      <input
+                        type="text"
+                        className={inp}
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Category name"
+                      />
+                      {showPoints && (
+                        <input
+                          type="number"
+                          className={inp}
+                          value={editPoints}
+                          onChange={(e) => setEditPoints(Number(e.target.value))}
+                          min={0}
+                          placeholder="Default merit points"
+                        />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updateCategory(cat.id, { name: editName.trim(), default_merit_points: showPoints ? editPoints : 0 })}
+                        className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-on-brand"
+                        disabled={busy || !editName.trim()}
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="rounded-lg px-3 py-1.5 text-xs text-soft"
+                        disabled={busy}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex-1">
+                      <p className="font-semibold text-ink">{cat.name}</p>
+                      {showPoints && (
+                        <p className="text-xs text-soft">{cat.default_merit_points} merit point{cat.default_merit_points !== 1 ? "s" : ""}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => startEdit(cat)}
+                        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-on-brand"
+                        disabled={busy}
+                      >
+                        Rename
+                      </button>
+                      <label className="flex items-center gap-1 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={cat.is_active}
+                          onChange={(e) => toggleActive(cat.id, e.target.checked)}
+                          disabled={busy}
+                        />
+                        <span className={cat.is_active ? "text-ok" : "text-faint"}>
+                          {cat.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add new category */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Add New Category</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addCategory();
+          }}
+          className="mt-4 space-y-3"
+        >
+          <label className="block text-xs font-semibold text-soft">
+            Category name
+            <input
+              type="text"
+              className={`${inp} mt-1`}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g., Helped a classmate"
+            />
+          </label>
+          {showPoints && (
+            <label className="block text-xs font-semibold text-soft">
+              Default merit points
+              <input
+                type="number"
+                className={`${inp} mt-1`}
+                value={newPoints}
+                onChange={(e) => setNewPoints(Number(e.target.value))}
+                min={0}
+              />
+              <p className="mt-1 text-xs text-faint">This value will pre-fill when recording a good deed.</p>
+            </label>
+          )}
+          <button className={btn} disabled={busy || !newName.trim()}>
+            Add category
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
 
