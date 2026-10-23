@@ -270,7 +270,7 @@ function ReportsPage() {
                 <td className="text-soft">{b.class_name}</td>
                 <td>
                   <span className="rounded-full bg-danger px-2.5 py-1 text-xs font-bold text-on-brand">
-                    {b.current_marks}/{b.starting_marks ?? 40}
+                    {b.current_marks}/{b.starting_marks ?? (school?.max_conduct_marks ?? 40)}
                   </span>
                 </td>
                 <td className="text-ink">{offensesByStudent.get(b.student_id ?? "") ?? 0}</td>
@@ -317,7 +317,7 @@ function ReportsPage() {
                     <td className="text-ok">+{b.marks_restored ?? 0}</td>
                     <td className="text-ink">{offensesByStudent.get(b.student_id ?? "") ?? 0}</td>
                     <td className="font-semibold text-ink">
-                      {b.current_marks}/{b.starting_marks ?? 40}
+                      {b.current_marks}/{b.starting_marks ?? (school?.max_conduct_marks ?? 40)}
                     </td>
                     <td>
                       <span className={`rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${STANDING_CLASS[standing]}`}>

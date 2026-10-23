@@ -6,7 +6,7 @@
 -- 1. Update conduct-evidence bucket to allow WEBP and support all discipline roles + platform admins
 -- 2. Add school logo storage bucket (public)
 -- 3. Add maximum conduct marks setting to school_settings
--- 4. Convert good deeds to recognition-only (no marks restoration)
+-- 4. Add good deed reward type setting to school_settings
 --
 -- ==============================================================================
 -- 1. UPDATE CONDUCT-EVIDENCE BUCKET
@@ -28,8 +28,8 @@ SET public = false,
     allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp'];
 
 -- Update upload policy to include all discipline roles + platform admins
-DROP POLICY IF EXISTS "Discipline staff upload school conduct evidence" ON storage.objects;
-CREATE POLICY "Discipline staff upload school conduct evidence"
+DROP POLICY IF EXISTS "n1 evidence upload" ON storage.objects;
+CREATE POLICY "n1 evidence upload"
   ON storage.objects FOR INSERT TO authenticated
   WITH CHECK (
     bucket_id = 'conduct-evidence'
@@ -43,8 +43,8 @@ CREATE POLICY "Discipline staff upload school conduct evidence"
   );
 
 -- Update read policy to include platform admins
-DROP POLICY IF EXISTS "Staff read school conduct evidence" ON storage.objects;
-CREATE POLICY "Staff read school conduct evidence"
+DROP POLICY IF EXISTS "n1 evidence read" ON storage.objects;
+CREATE POLICY "n1 evidence read"
   ON storage.objects FOR SELECT TO authenticated
   USING (
     bucket_id = 'conduct-evidence'
@@ -52,21 +52,6 @@ CREATE POLICY "Staff read school conduct evidence"
       public.is_platform_admin(auth.uid())
       OR (
         public.is_staff(auth.uid())
-        AND (storage.foldername(name))[1] = public.current_school_id()::text
-      )
-    )
-  );
-
--- Update delete policy to include platform admins
-DROP POLICY IF EXISTS "Discipline staff delete school conduct evidence" ON storage.objects;
-CREATE POLICY "Discipline staff delete school conduct evidence"
-  ON storage.objects FOR DELETE TO authenticated
-  USING (
-    bucket_id = 'conduct-evidence'
-    AND (
-      public.is_platform_admin(auth.uid())
-      OR (
-        public.is_discipline_staff(auth.uid())
         AND (storage.foldername(name))[1] = public.current_school_id()::text
       )
     )
@@ -91,31 +76,16 @@ SET public = true,
     file_size_limit = 2097152,
     allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp'];
 
--- Policy: School Directors can upload/update their school's logo
-DROP POLICY IF EXISTS "School directors upload logos" ON storage.objects;
-CREATE POLICY "School directors upload logos"
-  ON storage.objects FOR INSERT TO authenticated
-  WITH CHECK (
-    bucket_id = 'school-logos'
-    AND (
-      public.is_platform_admin(auth.uid())
-      OR (
-        public.is_school_director(auth.uid())
-        AND (storage.foldername(name))[1] = public.current_school_id()::text
-      )
-    )
-  );
-
 -- Policy: Anyone can read logos (public bucket)
-DROP POLICY IF EXISTS "Public read logos" ON storage.objects;
-CREATE POLICY "Public read logos"
+DROP POLICY IF EXISTS "n1 logos read" ON storage.objects;
+CREATE POLICY "n1 logos read"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'school-logos');
 
--- Policy: School Directors can delete their school's logo
-DROP POLICY IF EXISTS "School directors delete logos" ON storage.objects;
-CREATE POLICY "School directors delete logos"
-  ON storage.objects FOR DELETE TO authenticated
+-- Policy: School Directors can upload/update/delete their school's logo
+DROP POLICY IF EXISTS "n1 logos write" ON storage.objects;
+CREATE POLICY "n1 logos write"
+  ON storage.objects FOR ALL TO authenticated
   USING (
     bucket_id = 'school-logos'
     AND (
@@ -125,13 +95,8 @@ CREATE POLICY "School directors delete logos"
         AND (storage.foldername(name))[1] = public.current_school_id()::text
       )
     )
-  );
-
--- Policy: School Directors can update their school's logo
-DROP POLICY IF EXISTS "School directors update logos" ON storage.objects;
-CREATE POLICY "School directors update logos"
-  ON storage.objects FOR UPDATE TO authenticated
-  USING (
+  )
+  WITH CHECK (
     bucket_id = 'school-logos'
     AND (
       public.is_platform_admin(auth.uid())
@@ -162,29 +127,8 @@ WHERE max_conduct_marks IS NULL;
 
 
 -- ==============================================================================
--- 4. CONVERT GOOD DEEDS TO RECOGNITION-ONLY
+-- 4. GOOD DEED REWARD TYPE SETTING
 -- ==============================================================================
-
--- Update good_deed_reward enum constraint to replace 'restore_marks' with 'recognition'
--- First, convert all existing 'restore_marks' values to 'recognition'
-UPDATE public.good_deed_categories
-SET good_deed_reward = 'recognition'
-WHERE good_deed_reward = 'restore_marks';
-
--- Update the check constraint to only allow 'recognition' and 'merit_points'
-ALTER TABLE public.good_deed_categories
-  DROP CONSTRAINT IF EXISTS good_deed_categories_good_deed_reward_check;
-
-ALTER TABLE public.good_deed_categories
-  ADD CONSTRAINT good_deed_categories_good_deed_reward_check
-  CHECK (good_deed_reward IN ('recognition', 'merit_points'));
-
-COMMENT ON COLUMN public.good_deed_categories.good_deed_reward IS 'Recognition only or recognition + merit points. Good deeds NEVER restore conduct marks.';
-
--- Remove marks_restored column from good_deed_categories (no longer used)
--- Keep merit_points column (still used for merit points)
-ALTER TABLE public.good_deed_categories
-  DROP COLUMN IF EXISTS marks_restored;
 
 -- Add school-level setting for good deed reward type
 ALTER TABLE public.school_settings
@@ -205,4 +149,3 @@ WHERE good_deed_reward_type IS NULL;
 -- All changes are idempotent and safe to run multiple times.
 -- The app must implement fallbacks for:
 -- - logo_url, max_conduct_marks, good_deed_reward_type in school_settings
--- - The updated good_deed_reward constraint (recognition, merit_points only)

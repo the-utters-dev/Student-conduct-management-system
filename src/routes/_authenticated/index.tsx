@@ -128,7 +128,7 @@ function Dashboard() {
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
                   <span className="shrink-0 whitespace-nowrap font-display text-sm font-bold text-ink">
-                    {row.current_marks}/{row.starting_marks ?? 40}
+                    {row.current_marks}/{row.starting_marks ?? (school?.max_conduct_marks ?? 40)}
                   </span>
                   <span
                     className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${STANDING_CLASS[row.standing]}`}

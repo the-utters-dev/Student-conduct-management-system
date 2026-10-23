@@ -326,7 +326,7 @@ function ConductActionsPage() {
             offense_id: offenseId || null,
             good_deed_category_id: goodDeedCategoryId || null,
             entry_type: entryType,
-            marks: markValue,
+            marks: entryType === "good_deed" ? 0 : markValue,  // Good deeds NEVER change marks
             merit_points: Number.isFinite(meritPointsValue) ? meritPointsValue : 0,
             reason: reason.trim() || null,
             occurred_on: occurredOn,
@@ -343,14 +343,14 @@ function ConductActionsPage() {
         const cause = entryType === "good_deed"
           ? goodDeedCategory?.name || reason.trim() || "good conduct"
           : offense?.title || reason.trim() || "conduct review";
-        const startingMarks = balanceQuery.data?.starting_marks ?? 40;
+        const startingMarks = balanceQuery.data?.starting_marks ?? (schoolSettings?.max_conduct_marks ?? 40);
         const resultingBalance = newBalance ?? currentBalance ?? startingMarks;
 
         let smsQueued = false;
         const phone = selectedStudent?.parent_phone ?? null;
         if (notifyParent && phone) {
           const messageBody = entryType === "good_deed"
-            ? `Good news from ${schoolSettings?.school_name ?? "School"}! ${selectedStudent?.full_name} was recognised for ${cause}.${markValue > 0 ? ` Conduct: ${resultingBalance}/${startingMarks}.` : ""} Thank you for raising a responsible child.`
+            ? `Good news from ${schoolSettings?.school_name ?? "School"}! ${selectedStudent?.full_name} was recognised for ${cause}. Thank you for raising a responsible child.`
             : `SCDMS Update: ${selectedStudent?.full_name} received a ${label} of ${markValue} marks for '${cause}'. Current Conduct Balance: ${resultingBalance}/${startingMarks}.`;
           const { error: notifyError } = await supabase.from("notification_logs").insert({
             conduct_log_id: log.id,
@@ -420,7 +420,7 @@ function ConductActionsPage() {
           offense_id: offenseId || null,
           good_deed_category_id: goodDeedCategoryId || null,
           entry_type: entryType,
-          marks: markValue,
+          marks: entryType === "good_deed" ? 0 : markValue,  // Good deeds NEVER change marks
           merit_points: Number.isFinite(meritPointsValue) ? meritPointsValue : 0,
           reason: reason.trim() || null,
           occurred_on: occurredOn,
@@ -869,18 +869,21 @@ function ConductActionsPage() {
                 </div>
               )}
 
-              <div>
-                <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
-                  {entryType === "deduction" ? "Marks to deduct" : entryType === "good_deed" ? "Marks to restore" : "Marks to restore"}
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={marks}
-                  onChange={(e) => setMarks(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
+              {/* Good deeds have NO marks field - they don't change conduct balance */}
+              {entryType !== "good_deed" && (
+                <div>
+                  <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                    {entryType === "deduction" ? "Marks to deduct" : "Marks to restore"}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={marks}
+                    onChange={(e) => setMarks(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+              )}
             </div>
 
             {entryType === "good_deed" && (
@@ -1095,7 +1098,7 @@ function ConductActionsPage() {
                           marks: r.marks,
                           reason: r.entry_type === "good_deed" ? r.good_deed_category?.name ?? r.reason : r.offense?.title ?? r.reason,
                           balance: bal?.current_marks ?? null,
-                          startingMarks: bal?.starting_marks ?? 40,
+                          startingMarks: bal?.starting_marks ?? (schoolSettings?.max_conduct_marks ?? 40),
                           occurredOn: r.occurred_on,
                           evidenceUrl: r.evidence_url ?? null,
                           schoolName: schoolSettings?.school_name ?? "School",
