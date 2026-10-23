@@ -283,18 +283,15 @@ function ConductActionsPage() {
     const category = goodDeedCategoriesQuery.data?.find((c) => c.id === goodDeedCategoryId);
     if (!category) return;
 
-    const rewardMode = schoolSettings?.good_deed_reward ?? "restore_marks";
+    const rewardMode = schoolSettings?.good_deed_reward_type ?? "recognition";
     if (rewardMode === "recognition") {
       setMarks("0");
       setMeritPoints("0");
-    } else if (rewardMode === "restore_marks") {
-      setMarks(String(category.default_marks));
-      setMeritPoints("0");
     } else if (rewardMode === "merit_points") {
       setMarks("0");
-      setMeritPoints(String(category.default_merit_points));
+      setMeritPoints(String(category.default_merit_points ?? 0));
     }
-  }, [goodDeedCategoryId, goodDeedCategoriesQuery.data, schoolSettings?.good_deed_reward, entryType]);
+  }, [goodDeedCategoryId, goodDeedCategoriesQuery.data, schoolSettings?.good_deed_reward_type, entryType]);
 
   const markValue = Number.parseInt(marks, 10);
   const validMarks = Number.isFinite(markValue) && markValue >= 0;

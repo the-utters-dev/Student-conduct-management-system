@@ -45,7 +45,7 @@ function Dashboard() {
     },
     {
       label: "Average conduct score",
-      value: isPending ? "…" : `${avgScore.toFixed(1)}/40`,
+      value: isPending ? "…" : `${avgScore.toFixed(1)}/${school?.max_conduct_marks ?? 40}`,
       note: `Across ${totalStudents} active students`,
       icon: "A",
       iconClass: "bg-brand/10 text-brand",

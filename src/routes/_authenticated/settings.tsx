@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth, type AppRole, type PermissionKey } from "@/hooks/useAuth";
 import { useSchoolSettings, DEFAULT_SETTINGS, type SchoolSettings } from "@/hooks/useSchoolSettings";
 import { ACCENTS, useTheme, type AccentKey } from "@/hooks/useTheme";
-import { fileToResizedDataUrl } from "@/lib/image";
+import { fileToResizedDataUrl, convertToJpeg } from "@/lib/image";
 import {
   listSchoolStaff,
   inviteSchoolStaff,
@@ -120,12 +120,53 @@ function ProfileTab() {
     catch (e) { toast.error((e as Error).message); }
   }
   async function onLogo(file?: File) {
-    if (!file) return;
+    if (!file || !schoolId) return;
+    setBusy(true);
     try {
-      await saveSchool({ logo_url: await fileToResizedDataUrl(file) }, schoolId);
+      // Convert to JPEG (max 512px for logos)
+      const jpegBlob = await convertToJpeg(file, 512, 0.9);
+      const logoPath = `${schoolId}/logo.jpg`;
+
+      // Upload to public bucket
+      const { error: uploadError } = await supabase.storage
+        .from("school-logos")
+        .upload(logoPath, jpegBlob, {
+          contentType: "image/jpeg",
+          upsert: true, // Replace existing logo
+        });
+
+      if (uploadError) throw new Error(uploadError.message);
+
+      // Get public URL
+      const { data } = supabase.storage.from("school-logos").getPublicUrl(logoPath);
+      const publicUrl = data.publicUrl;
+
+      // Save to school_settings
+      await saveSchool({ logo_url: publicUrl }, schoolId);
       toast.success("School logo updated");
       void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
-    } catch (e) { toast.error((e as Error).message); }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeLogo() {
+    if (!schoolId) return;
+    setBusy(true);
+    try {
+      // Remove from storage
+      await supabase.storage.from("school-logos").remove([`${schoolId}/logo.jpg`]);
+      // Update settings
+      await saveSchool({ logo_url: null }, schoolId);
+      toast.success("Logo removed");
+      void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -176,14 +217,22 @@ function ProfileTab() {
             <div className="grid h-20 w-20 place-items-center rounded-2xl bg-linear-to-br from-brand to-accent font-display text-2xl font-bold text-on-brand">S</div>
           )}
           {canManage ? (
-            <label className={`${btn} cursor-pointer`}>
-              Upload logo
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => onLogo(e.target.files?.[0])} />
-            </label>
+            <div className="space-y-2">
+              <label className={`${btn} inline-block cursor-pointer`}>
+                Upload logo
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => onLogo(e.target.files?.[0])} disabled={busy} />
+              </label>
+              {school?.logo_url && (
+                <button className="block text-xs text-danger" onClick={removeLogo} disabled={busy}>
+                  Remove logo
+                </button>
+              )}
+            </div>
           ) : (
             <p className="text-sm text-soft">Only School Leaders and System Administrators can change the logo.</p>
           )}
         </div>
+        <p className="mt-4 text-xs text-faint">The logo appears in the sidebar, reports, and certificates.</p>
       </div>
     </div>
   );
@@ -239,15 +288,18 @@ function SystemTab() {
     const [a, b] = f.academic_year.split("/").map(Number);
     if (b !== a! + 1) return setErr("The second year must follow the first (e.g. 2026/2027).");
     if (!f.school_name.trim()) return setErr("School name is required.");
-    if (f.critical_threshold < 0 || f.critical_threshold > 40) return setErr("Critical threshold must be between 0 and 40.");
-    if (f.warning_threshold <= f.critical_threshold || f.warning_threshold > 40)
-      return setErr("Warning threshold must be above the critical threshold and at most 40.");
+    const maxMarks = f.max_conduct_marks ?? 40;
+    if (maxMarks < 10 || maxMarks > 200) return setErr("Maximum conduct marks must be between 10 and 200.");
+    if (f.critical_threshold < 0 || f.critical_threshold > maxMarks) return setErr(`Critical threshold must be between 0 and ${maxMarks}.`);
+    if (f.warning_threshold <= f.critical_threshold || f.warning_threshold > maxMarks)
+      return setErr(`Warning threshold must be above the critical threshold and at most ${maxMarks}.`);
     setErr(null);
     setBusy(true);
     try {
       await saveSchool({
         school_name: f.school_name.trim(),
         academic_year: f.academic_year,
+        max_conduct_marks: maxMarks,
         critical_threshold: f.critical_threshold,
         warning_threshold: f.warning_threshold,
         notify_on_threshold: f.notify_on_threshold,
@@ -264,6 +316,18 @@ function SystemTab() {
       <fieldset disabled={!canManage} className="space-y-4">
         <label className="block text-xs font-semibold text-soft">School name<input className={`${inp} mt-1`} value={f.school_name} onChange={(e) => setF({ ...f, school_name: e.target.value })} /></label>
         <label className="block text-xs font-semibold text-soft">Academic year<input className={`${inp} mt-1`} placeholder="2026/2027" value={f.academic_year} onChange={(e) => setF({ ...f, academic_year: e.target.value })} /></label>
+        <label className="block text-xs font-semibold text-soft">
+          Maximum conduct marks per term
+          <input
+            type="number"
+            className={`${inp} mt-1`}
+            value={f.max_conduct_marks ?? 40}
+            onChange={(e) => setF({ ...f, max_conduct_marks: Number(e.target.value) })}
+            min={10}
+            max={200}
+          />
+          <p className="mt-1 text-xs text-faint">Students start each term with this balance (10–200, default 40).</p>
+        </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-xs font-semibold text-soft">Critical alert at or below<input type="number" className={`${inp} mt-1`} value={f.critical_threshold} onChange={(e) => setF({ ...f, critical_threshold: Number(e.target.value) })} /></label>
           <label className="block text-xs font-semibold text-soft">Warning at or below<input type="number" className={`${inp} mt-1`} value={f.warning_threshold} onChange={(e) => setF({ ...f, warning_threshold: Number(e.target.value) })} /></label>

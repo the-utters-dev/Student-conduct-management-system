@@ -148,8 +148,10 @@ export const updateSchool = createServerFn({ method: "POST" })
   });
 
 async function setStaffRole(admin: SupabaseClient, userId: string, role: StaffRole) {
+  // Remove all other school roles (not system_admin)
   await admin.from("user_roles").delete().eq("user_id", userId).in("role", [...STAFF_ROLES]);
-  const { error } = await admin.from("user_roles").insert({ user_id: userId, role });
+  // Upsert the new role (idempotent - safe if trigger already created it)
+  const { error } = await admin.from("user_roles").upsert({ user_id: userId, role }, { onConflict: "user_id,role" });
   if (error) throw new Error(error.message);
 }
 

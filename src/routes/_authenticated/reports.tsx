@@ -206,7 +206,7 @@ function ReportsPage() {
       {balancesQ.error && <p className="mb-4 text-sm text-danger">Could not load report data.</p>}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Average conduct score" value={loading ? "…" : `${stats.avg.toFixed(1)}/40`} />
+        <Stat label="Average conduct score" value={loading ? "…" : `${stats.avg.toFixed(1)}/${school?.max_conduct_marks ?? 40}`} />
         <Stat label="Incidents this term" value={loading ? "…" : String(stats.incidents)} />
         <Stat label="Deducted vs restored" value={loading ? "…" : `${stats.deducted} / ${stats.restored}`} />
         <Stat label="Critical alerts (≤20)" value={loading ? "…" : String(stats.critical.length)} danger />

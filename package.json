@@ -4,7 +4,7 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
@@ -76,6 +76,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "cross-env": "^10.1.0",
     "drizzle-kit": "0.x",
     "drizzle-orm": "0.x",
     "eslint": "^9.32.0",

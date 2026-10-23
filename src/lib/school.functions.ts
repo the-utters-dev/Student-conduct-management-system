@@ -233,10 +233,10 @@ export const inviteSchoolStaff = createServerFn({ method: "POST" })
         throw new Error(`User created but school assignment failed: ${profileError.message}. Assign the user manually using 'Add existing user'.`);
       }
 
-      // Assign the role
+      // Assign the role (use upsert to be idempotent - trigger may have already assigned it)
       const { error: roleError } = await admin
         .from("user_roles")
-        .insert({ user_id: invitedUserId, role: data.role });
+        .upsert({ user_id: invitedUserId, role: data.role }, { onConflict: "user_id,role" });
 
       if (roleError) {
         throw new Error(`User created but role assignment failed: ${roleError.message}. Assign the role manually in the staff list.`);
@@ -805,10 +805,10 @@ export const createSchoolAccountWithoutEmail = createServerFn({ method: "POST" }
       throw new Error(`User created but school assignment failed: ${profileError.message}`);
     }
 
-    // Assign role
+    // Assign role (use upsert to be idempotent - trigger may have already assigned it)
     const { error: roleError } = await admin
       .from("user_roles")
-      .insert({ user_id: newUserId, role: data.role });
+      .upsert({ user_id: newUserId, role: data.role }, { onConflict: "user_id,role" });
 
     if (roleError) {
       throw new Error(`User created but role assignment failed: ${roleError.message}`);
