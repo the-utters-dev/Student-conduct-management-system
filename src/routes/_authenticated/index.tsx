@@ -30,7 +30,7 @@ export const Route = createFileRoute("/_authenticated/")({
 });
 
 function Dashboard() {
-  const { profile, school: tenantSchool, schoolId, isSchoolDirector } = useAuth();
+  const { profile, school: tenantSchool, schoolId, isSchoolDirector, role } = useAuth();
   const { data: school } = useSchoolSettings();
   const schoolName = tenantSchool?.name || school?.school_name || "Your School";
   const { rows, atRisk, criticalCount, warningCount, isPending } = useConductStandings();
@@ -42,6 +42,21 @@ function Dashboard() {
 
   // Good deeds this term
   const totalGoodDeeds = rows.reduce((sum, r) => sum + ((r as any).good_deeds_count ?? 0), 0);
+
+  // Active term check
+  const { data: activeTerm } = useQuery({
+    queryKey: ["active-term", schoolId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("academic_terms" as never) as any)
+        .select("id, name, start_date, end_date, is_active")
+        .eq("school_id", schoolId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { id: string; name: string; start_date: string; end_date: string; is_active: boolean } | null;
+    },
+    enabled: !!schoolId,
+  });
 
   const KPI_CARDS = [
     {
@@ -164,11 +179,27 @@ function Dashboard() {
   const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
   const name = profile?.full_name?.trim() || "there";
   const date = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  const today = new Date().toISOString().split("T")[0] as string;
+  const showTermBanner = activeTerm && (today < activeTerm.start_date || today > activeTerm.end_date);
+
   return (
     <DashboardShell
       greeting={`Good ${part}, ${name}`}
       dateLine={`${date} · ${schoolName}`}
     >
+      {showTermBanner && (
+        <div className="mb-4 rounded-3xl border border-warn bg-warn/10 p-4">
+          <p className="text-sm font-semibold text-warn">
+            {activeTerm.name} ended on {new Date(activeTerm.end_date).toLocaleDateString("en-GB")}.
+            {" "}
+            <Link to="/settings" className="underline">
+              Activate the next term in Settings
+            </Link>
+            .
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
         {KPI_CARDS.map((card) => (
           <div
@@ -346,7 +377,7 @@ function Dashboard() {
         </div>
 
         {/* Student of the Week */}
-        {isSchoolDirector && (
+        {(isSchoolDirector || role === "master_of_discipline") && (
           <div className="min-w-0 rounded-3xl border border-glass-line bg-glass p-3 shadow-panel backdrop-blur-2xl sm:p-5 lg:col-span-1">
             <div className="font-display text-[15px] font-bold text-ink">
               Student of the Week

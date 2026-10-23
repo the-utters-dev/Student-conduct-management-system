@@ -55,6 +55,7 @@ interface Log {
   reason: string | null;
   occurred_on: string;
   offenses_catalog: { title: string; category: string } | null;
+  good_deed_categories: { name: string } | null;
 }
 
 function weekStart(d: string) {
@@ -109,7 +110,7 @@ function ReportsPage() {
     queryFn: async (): Promise<Log[]> => {
       const { data, error } = await supabase
         .from("conduct_logs")
-        .select("id, student_id, entry_type, marks, reason, occurred_on, offenses_catalog(title, category)")
+        .select("id, student_id, entry_type, marks, reason, occurred_on, offenses_catalog(title, category), good_deed_categories(name)")
         .eq("term_id", termId!)
         .order("occurred_on", { ascending: false });
       if (error) throw error;
@@ -342,13 +343,34 @@ function ReportsPage() {
           <ul className="max-h-96 space-y-2 overflow-y-auto">
             {history.map((l) => (
               <li key={l.id} className="flex items-start justify-between gap-3 rounded-xl border border-hairline p-3 text-sm">
-                <div>
-                  <p className="font-semibold text-ink">{l.offenses_catalog?.title ?? l.reason ?? "Entry"}</p>
-                  <p className="text-xs text-soft">{new Date(l.occurred_on).toLocaleDateString("en-GB")}{l.reason && l.offenses_catalog ? ` · ${l.reason}` : ""}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-ink">
+                    {l.entry_type === "good_deed"
+                      ? l.good_deed_categories?.name ?? l.reason ?? "Good deed"
+                      : l.offenses_catalog?.title ?? l.reason ?? "Entry"}
+                  </p>
+                  <p className="text-xs text-soft">
+                    {new Date(l.occurred_on).toLocaleDateString("en-GB")}
+                    {l.reason && (l.offenses_catalog || l.good_deed_categories) ? ` · ${l.reason}` : ""}
+                  </p>
                 </div>
-                <span className={`font-bold ${l.entry_type === "deduction" ? "text-danger" : "text-ok"}`}>
-                  {l.entry_type === "deduction" ? "−" : "+"}{l.marks}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  {l.entry_type === "good_deed" ? (
+                    <>
+                      <span className="font-bold text-ok">★</span>
+                      <a
+                        href={`/certificate/${l.id}`}
+                        className="rounded-lg bg-brand px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-on-brand hover:bg-brand/90"
+                      >
+                        Certificate
+                      </a>
+                    </>
+                  ) : (
+                    <span className={`font-bold ${l.entry_type === "deduction" ? "text-danger" : "text-ok"}`}>
+                      {l.entry_type === "deduction" ? "−" : "+"}{l.marks}
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
             {!history.length && <li className="text-sm text-soft">No entries this term.</li>}

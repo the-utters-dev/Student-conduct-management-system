@@ -51,6 +51,7 @@ const btn = "rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand s
 function SettingsPage() {
   const { isSchoolDirector, can } = useAuth();
   const showCategories = isSchoolDirector || can("manage_offences");
+  const showCalendar = isSchoolDirector || can("manage_terms");
   return (
     <DashboardShell greeting="Settings" dateLine="Profile, appearance & system preferences">
       <Tabs defaultValue="profile">
@@ -58,12 +59,14 @@ function SettingsPage() {
           <TabsTrigger value="profile">Profile & Avatar</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="system">System Preferences</TabsTrigger>
+          {showCalendar && <TabsTrigger value="calendar">Academic Calendar</TabsTrigger>}
           {showCategories && <TabsTrigger value="categories">Good Deed Categories</TabsTrigger>}
           {isSchoolDirector && <TabsTrigger value="staff">Staff & Roles</TabsTrigger>}
         </TabsList>
         <TabsContent value="profile"><ProfileTab /></TabsContent>
         <TabsContent value="appearance"><AppearanceTab /></TabsContent>
         <TabsContent value="system"><SystemTab /></TabsContent>
+        {showCalendar && <TabsContent value="calendar"><CalendarTab /></TabsContent>}
         {showCategories && <TabsContent value="categories"><CategoriesTab /></TabsContent>}
         {isSchoolDirector && <TabsContent value="staff"><StaffTab /></TabsContent>}
       </Tabs>
@@ -72,8 +75,8 @@ function SettingsPage() {
 }
 
 function useCanManageSchool() {
-  const { role } = useAuth();
-  return role === "school_leader" || role === "system_admin";
+  const { isSchoolDirector, isPlatformAdmin } = useAuth();
+  return isSchoolDirector || isPlatformAdmin;
 }
 
 async function saveSchool(patch: Partial<SchoolSettings>, schoolId: string | null) {
@@ -232,7 +235,7 @@ function ProfileTab() {
               )}
             </div>
           ) : (
-            <p className="text-sm text-soft">Only School Leaders and System Administrators can change the logo.</p>
+            <p className="text-sm text-soft">Only the School Director can change the logo.</p>
           )}
         </div>
         <p className="mt-4 text-xs text-faint">The logo appears in the sidebar, reports, and certificates.</p>
@@ -316,7 +319,7 @@ function SystemTab() {
 
   return (
     <form onSubmit={submit} className={`${panel} max-w-xl space-y-4`}>
-      {!canManage && <p className="text-sm text-soft">View only — School Leaders and System Administrators can change these.</p>}
+      {!canManage && <p className="text-sm text-soft">View only — Only the School Director can change these.</p>}
       <fieldset disabled={!canManage} className="space-y-4">
         <label className="block text-xs font-semibold text-soft">School name<input className={`${inp} mt-1`} value={f.school_name} onChange={(e) => setF({ ...f, school_name: e.target.value })} /></label>
         <label className="block text-xs font-semibold text-soft">Academic year<input className={`${inp} mt-1`} placeholder="2026/2027" value={f.academic_year} onChange={(e) => setF({ ...f, academic_year: e.target.value })} /></label>
@@ -360,6 +363,357 @@ function SystemTab() {
         <button className={btn} disabled={busy}>Save preferences</button>
       </fieldset>
     </form>
+  );
+}
+
+interface AcademicYear {
+  id: string;
+  school_id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
+}
+
+interface AcademicTerm {
+  id: string;
+  academic_year_id: string;
+  school_id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  starting_marks: number;
+  is_active: boolean;
+}
+
+function CalendarTab() {
+  const { schoolId } = useAuth();
+  const { data: settings } = useSchoolSettings();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [editingYear, setEditingYear] = useState<string | null>(null);
+  const [editingTerm, setEditingTerm] = useState<string | null>(null);
+  const [newYear, setNewYear] = useState({ name: "", start_date: "", end_date: "" });
+  const [newTerm, setNewTerm] = useState({ academic_year_id: "", name: "", start_date: "", end_date: "", starting_marks: settings?.max_conduct_marks ?? 40 });
+
+  // Fetch academic years
+  const { data: years, isLoading: yearsLoading } = useQuery({
+    queryKey: ["academic-years", schoolId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("academic_years" as never) as any)
+        .select("*")
+        .eq("school_id", schoolId)
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return data as AcademicYear[];
+    },
+    enabled: !!schoolId,
+  });
+
+  // Fetch academic terms
+  const { data: terms, isLoading: termsLoading } = useQuery({
+    queryKey: ["academic-terms", schoolId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from("academic_terms" as never) as any)
+        .select("*")
+        .eq("school_id", schoolId)
+        .order("start_date", { ascending: false });
+      if (error) throw error;
+      return data as AcademicTerm[];
+    },
+    enabled: !!schoolId,
+  });
+
+  const activeTerm = terms?.find(t => t.is_active);
+  const today = new Date().toISOString().split("T")[0] as string;
+  const showBanner = activeTerm && (today < activeTerm.start_date || today > activeTerm.end_date);
+
+  async function createYear() {
+    if (!newYear.name.trim() || !newYear.start_date || !newYear.end_date) {
+      toast.error("All fields are required");
+      return;
+    }
+    if (newYear.end_date <= newYear.start_date) {
+      toast.error("End date must be after start date");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("academic_years" as never) as any).insert({
+        school_id: schoolId,
+        name: newYear.name.trim(),
+        start_date: newYear.start_date,
+        end_date: newYear.end_date,
+        is_current: false,
+      });
+      if (error) throw error;
+      toast.success("Academic year created");
+      setNewYear({ name: "", start_date: "", end_date: "" });
+      void qc.invalidateQueries({ queryKey: ["academic-years", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createTerm() {
+    if (!newTerm.academic_year_id || !newTerm.name.trim() || !newTerm.start_date || !newTerm.end_date) {
+      toast.error("All fields are required");
+      return;
+    }
+    if (newTerm.end_date <= newTerm.start_date) {
+      toast.error("End date must be after start date");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("academic_terms" as never) as any).insert({
+        school_id: schoolId,
+        academic_year_id: newTerm.academic_year_id,
+        name: newTerm.name.trim(),
+        start_date: newTerm.start_date,
+        end_date: newTerm.end_date,
+        starting_marks: newTerm.starting_marks,
+        is_active: false,
+      });
+      if (error) throw error;
+      toast.success("Term created");
+      setNewTerm({ academic_year_id: "", name: "", start_date: "", end_date: "", starting_marks: settings?.max_conduct_marks ?? 40 });
+      void qc.invalidateQueries({ queryKey: ["academic-terms", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function activateTerm(termId: string) {
+    setBusy(true);
+    try {
+      // First deactivate all terms
+      await (supabase.from("academic_terms" as never) as any)
+        .update({ is_active: false })
+        .eq("school_id", schoolId);
+
+      // Then activate the selected term
+      const { error } = await (supabase.from("academic_terms" as never) as any)
+        .update({ is_active: true })
+        .eq("id", termId);
+
+      if (error) throw error;
+      toast.success("Term activated");
+      void qc.invalidateQueries({ queryKey: ["academic-terms", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Banner for term outside dates */}
+      {showBanner && (
+        <div className="rounded-3xl border border-warn bg-warn/10 p-4">
+          <p className="text-sm font-semibold text-warn">
+            {activeTerm.name} ended on {new Date(activeTerm.end_date).toLocaleDateString("en-GB")}.
+            {" "}Activate the next term below.
+          </p>
+        </div>
+      )}
+
+      {/* Academic Years */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Academic Years</h3>
+        {yearsLoading ? (
+          <p className="mt-4 text-sm text-soft">Loading academic years...</p>
+        ) : !years || years.length === 0 ? (
+          <p className="mt-4 text-sm text-soft">No academic years yet. Create one below.</p>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {years.map((year) => (
+              <div
+                key={year.id}
+                className="flex flex-col gap-3 rounded-xl border border-glass-line bg-glass-bright p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex-1">
+                  <p className="font-semibold text-ink">{year.name}</p>
+                  <p className="text-xs text-soft">
+                    {new Date(year.start_date).toLocaleDateString("en-GB")} – {new Date(year.end_date).toLocaleDateString("en-GB")}
+                  </p>
+                </div>
+                {year.is_current && (
+                  <span className="rounded-lg bg-ok/15 px-2 py-1 text-xs font-semibold text-ok">Current</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Create Academic Year */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Add Academic Year</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void createYear();
+          }}
+          className="mt-4 space-y-3"
+        >
+          <label className="block text-xs font-semibold text-soft">
+            Year name (e.g., 2026/2027)
+            <input
+              type="text"
+              className={`${inp} mt-1`}
+              value={newYear.name}
+              onChange={(e) => setNewYear({ ...newYear, name: e.target.value })}
+              placeholder="2026/2027"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs font-semibold text-soft">
+              Start date
+              <input
+                type="date"
+                className={`${inp} mt-1`}
+                value={newYear.start_date}
+                onChange={(e) => setNewYear({ ...newYear, start_date: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs font-semibold text-soft">
+              End date
+              <input
+                type="date"
+                className={`${inp} mt-1`}
+                value={newYear.end_date}
+                onChange={(e) => setNewYear({ ...newYear, end_date: e.target.value })}
+              />
+            </label>
+          </div>
+          <button className={btn} disabled={busy}>
+            Create academic year
+          </button>
+        </form>
+      </div>
+
+      {/* Academic Terms */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Terms</h3>
+        {termsLoading ? (
+          <p className="mt-4 text-sm text-soft">Loading terms...</p>
+        ) : !terms || terms.length === 0 ? (
+          <p className="mt-4 text-sm text-soft">No terms yet. Create one below.</p>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {terms.map((term) => {
+              const year = years?.find(y => y.id === term.academic_year_id);
+              return (
+                <div
+                  key={term.id}
+                  className="flex flex-col gap-3 rounded-xl border border-glass-line bg-glass-bright p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex-1">
+                    <p className="font-semibold text-ink">{term.name} {year && `(${year.name})`}</p>
+                    <p className="text-xs text-soft">
+                      {new Date(term.start_date).toLocaleDateString("en-GB")} – {new Date(term.end_date).toLocaleDateString("en-GB")}
+                      {" "}· Starting marks: {term.starting_marks}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {term.is_active ? (
+                      <span className="rounded-lg bg-ok/15 px-2 py-1 text-xs font-semibold text-ok">Active</span>
+                    ) : (
+                      <button
+                        onClick={() => activateTerm(term.id)}
+                        className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-on-brand"
+                        disabled={busy}
+                      >
+                        Activate
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Create Term */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Add Term</h3>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void createTerm();
+          }}
+          className="mt-4 space-y-3"
+        >
+          <label className="block text-xs font-semibold text-soft">
+            Academic year
+            <select
+              className={`${inp} mt-1`}
+              value={newTerm.academic_year_id}
+              onChange={(e) => setNewTerm({ ...newTerm, academic_year_id: e.target.value })}
+            >
+              <option value="">Select academic year</option>
+              {years?.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold text-soft">
+            Term name (e.g., Term 1)
+            <input
+              type="text"
+              className={`${inp} mt-1`}
+              value={newTerm.name}
+              onChange={(e) => setNewTerm({ ...newTerm, name: e.target.value })}
+              placeholder="Term 1"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs font-semibold text-soft">
+              Start date
+              <input
+                type="date"
+                className={`${inp} mt-1`}
+                value={newTerm.start_date}
+                onChange={(e) => setNewTerm({ ...newTerm, start_date: e.target.value })}
+              />
+            </label>
+            <label className="block text-xs font-semibold text-soft">
+              End date
+              <input
+                type="date"
+                className={`${inp} mt-1`}
+                value={newTerm.end_date}
+                onChange={(e) => setNewTerm({ ...newTerm, end_date: e.target.value })}
+              />
+            </label>
+          </div>
+          <label className="block text-xs font-semibold text-soft">
+            Starting marks
+            <input
+              type="number"
+              className={`${inp} mt-1`}
+              value={newTerm.starting_marks}
+              onChange={(e) => setNewTerm({ ...newTerm, starting_marks: Number(e.target.value) })}
+              min={10}
+              max={200}
+            />
+            <p className="mt-1 text-xs text-faint">Students will start this term with this balance (default: {settings?.max_conduct_marks ?? 40}).</p>
+          </label>
+          <button className={btn} disabled={busy}>
+            Create term
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -619,6 +973,8 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   view_reports: "View reports",
   message_parents: "Message parents",
   send_photos: "Send evidence photos",
+  manage_terms: "Manage academic calendar",
+  school_wide_entries: "Whole-school conduct entries",
 };
 
 const PERMISSION_ROLES: SchoolRole[] = ["master_of_discipline", "matron", "patron"];
@@ -712,6 +1068,8 @@ function StaffTab() {
           view_reports: true,
           message_parents: true,
           send_photos: true,
+          manage_terms: true,
+          school_wide_entries: true,
         },
         matron: {
           delete_students: false,
@@ -720,6 +1078,8 @@ function StaffTab() {
           view_reports: true,
           message_parents: true,
           send_photos: true,
+          manage_terms: false,
+          school_wide_entries: false,
         },
         patron: {
           delete_students: false,
@@ -728,6 +1088,8 @@ function StaffTab() {
           view_reports: true,
           message_parents: true,
           send_photos: true,
+          manage_terms: false,
+          school_wide_entries: false,
         },
       });
     }

@@ -28,7 +28,9 @@ export type PermissionKey =
   | "view_audit_logs"
   | "view_reports"
   | "message_parents"
-  | "send_photos";
+  | "send_photos"
+  | "manage_terms"
+  | "school_wide_entries";
 
 export interface StaffProfile {
   id: string;

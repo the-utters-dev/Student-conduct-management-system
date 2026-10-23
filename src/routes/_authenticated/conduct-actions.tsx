@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { db, insertWithColumnFallback, uploadEvidence } from "@/lib/evidence";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { ParentMessageComposer, type ComposerEntry } from "@/components/ParentMessageComposer";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/conduct-actions")({
   head: () => ({
@@ -94,7 +95,7 @@ function ConductActionsPage() {
   const queryClient = useQueryClient();
 
   // Mode toggle: one or multiple students
-  const [selectionMode, setSelectionMode] = useState<"one" | "several">("one");
+  const [selectionMode, setSelectionMode] = useState<"one" | "several" | "whole_level" | "whole_school">("one");
   const [studentId, setStudentId] = useState("");
   const [studentQuery, setStudentQuery] = useState("");
   const [listOpen, setListOpen] = useState(false);
@@ -112,9 +113,21 @@ function ConductActionsPage() {
   const [occurredOn, setOccurredOn] = useState(todayISO());
   const [reason, setReason] = useState("");
   const [notifyParent, setNotifyParent] = useState(true);
+
+  // Set notifyParent to false by default for whole_school entries
+  useEffect(() => {
+    if (selectionMode === "whole_school") {
+      setNotifyParent(false);
+    } else if (selectionMode === "one" || selectionMode === "several" || selectionMode === "whole_level") {
+      if (!notifyParent) {
+        setNotifyParent(true);
+      }
+    }
+  }, [selectionMode, notifyParent]);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [evidenceKey, setEvidenceKey] = useState(0);
   const [composer, setComposer] = useState<ComposerEntry | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const studentsQuery = useQuery({
     queryKey: ["students", "active", schoolId],
@@ -261,7 +274,13 @@ function ConductActionsPage() {
 
   // Students matching the selected class/stream for multi-selection
   const matchingStudents = useMemo(() => {
-    if (selectionMode !== "several") return [];
+    if (selectionMode === "one") return [];
+    if (selectionMode === "whole_school") return students;
+    if (selectionMode === "whole_level") {
+      if (!selectedClassLevel) return [];
+      return students.filter(s => s.class_name.startsWith(selectedClassLevel));
+    }
+    // selectionMode === "several"
     if (!selectedClassLevel) return [];
     return students.filter(s => {
       const matchesLevel = s.class_name.startsWith(selectedClassLevel);
@@ -399,8 +418,12 @@ function ConductActionsPage() {
                 : null,
         };
       } else {
-        // Multiple students mode
-        if (selectedStudentIds.size === 0 || !termId) throw new Error("Select students and an active term first.");
+        // Multiple students mode (several, whole_level, whole_school)
+        const targetStudentIds = selectionMode === "whole_school" || selectionMode === "whole_level"
+          ? matchingStudents.map(s => s.id)
+          : Array.from(selectedStudentIds);
+
+        if (targetStudentIds.length === 0 || !termId) throw new Error("Select students and an active term first.");
 
         // Upload evidence once to be reused
         const evidence = await uploadEvidence(evidenceFile, schoolId);
@@ -413,8 +436,7 @@ function ConductActionsPage() {
           ? goodDeedCategory?.name || reason.trim() || "good conduct"
           : offense?.title || reason.trim() || "conduct review";
 
-        const studentIds = Array.from(selectedStudentIds);
-        const logsToInsert = studentIds.map(sid => ({
+        const logsToInsert = targetStudentIds.map(sid => ({
           student_id: sid,
           term_id: termId,
           offense_id: offenseId || null,
@@ -497,7 +519,7 @@ function ConductActionsPage() {
         }
 
         return {
-          count: studentIds.length,
+          count: targetStudentIds.length,
           messagesQueued,
           studentsWithoutPhone,
           notifyRequested: notifyParent,
@@ -586,7 +608,13 @@ function ConductActionsPage() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (canSubmit) submit.mutate();
+            if (!canSubmit) return;
+            // Show confirmation for whole_school and whole_level
+            if (selectionMode === "whole_school" || selectionMode === "whole_level") {
+              setShowConfirmation(true);
+            } else {
+              submit.mutate();
+            }
           }}
           className="rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl"
         >
@@ -603,7 +631,7 @@ function ConductActionsPage() {
               <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
                 Student selection
               </label>
-              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline">
+              <div className={can("school_wide_entries") ? "grid grid-cols-2 gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline sm:grid-cols-4" : "grid grid-cols-2 gap-2 rounded-2xl bg-glass-bright p-1 ring-1 ring-hairline"}>
                 <button
                   type="button"
                   onClick={() => {
@@ -636,6 +664,45 @@ function ConductActionsPage() {
                   Several students
                   <span className="block text-[10px] font-medium opacity-70">Bulk entry</span>
                 </button>
+                {can("school_wide_entries") && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectionMode("whole_level");
+                        setStudentId("");
+                        setSelectedStream("");
+                        setSelectedStudentIds(new Set());
+                      }}
+                      className={
+                        selectionMode === "whole_level"
+                          ? "rounded-xl bg-brand px-4 py-2.5 text-center text-[13px] font-semibold text-white shadow-brand-glow"
+                          : "rounded-xl px-4 py-2.5 text-center text-[13px] font-semibold text-soft transition hover:text-ink"
+                      }
+                    >
+                      Whole level
+                      <span className="block text-[10px] font-medium opacity-70">e.g., all S2</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectionMode("whole_school");
+                        setStudentId("");
+                        setSelectedClassLevel("");
+                        setSelectedStream("");
+                        setSelectedStudentIds(new Set());
+                      }}
+                      className={
+                        selectionMode === "whole_school"
+                          ? "rounded-xl bg-brand px-4 py-2.5 text-center text-[13px] font-semibold text-white shadow-brand-glow"
+                          : "rounded-xl px-4 py-2.5 text-center text-[13px] font-semibold text-soft transition hover:text-ink"
+                      }
+                    >
+                      Whole school
+                      <span className="block text-[10px] font-medium opacity-70">All students</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -690,8 +757,20 @@ function ConductActionsPage() {
             </div>
             ) : (
               <div className="space-y-4">
-                {/* Class level and stream selection */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Whole school: show summary */}
+                {selectionMode === "whole_school" && (
+                  <div className="rounded-2xl border border-brand/30 bg-brand/5 p-4">
+                    <p className="text-sm font-semibold text-ink">
+                      Whole school selected: {students.length} student{students.length !== 1 ? "s" : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-soft">
+                      This entry will apply to all active students across all classes.
+                    </p>
+                  </div>
+                )}
+
+                {/* Whole level: class level selection only */}
+                {selectionMode === "whole_level" && (
                   <div>
                     <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
                       Class level
@@ -700,7 +779,6 @@ function ConductActionsPage() {
                       value={selectedClassLevel}
                       onChange={(e) => {
                         setSelectedClassLevel(e.target.value);
-                        setSelectedStream("");
                         setSelectedStudentIds(new Set());
                       }}
                       className={inputClass}
@@ -712,32 +790,64 @@ function ConductActionsPage() {
                         </option>
                       ))}
                     </select>
+                    {selectedClassLevel && matchingStudents.length > 0 && (
+                      <p className="mt-2 text-xs text-soft">
+                        {matchingStudents.length} student{matchingStudents.length !== 1 ? "s" : ""} in {selectedClassLevel}
+                      </p>
+                    )}
                   </div>
-                  <div>
-                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
-                      Stream (optional)
-                    </label>
-                    <select
-                      value={selectedStream}
-                      onChange={(e) => {
-                        setSelectedStream(e.target.value);
-                        setSelectedStudentIds(new Set());
-                      }}
-                      className={inputClass}
-                      disabled={!selectedClassLevel}
-                    >
-                      <option value="">All streams</option>
-                      {streams.map((stream) => (
-                        <option key={stream} value={stream}>
-                          {stream}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                )}
 
-                {/* Student checklist */}
-                {matchingStudents.length > 0 && (
+                {/* Several students: class level and stream selection */}
+                {selectionMode === "several" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                        Class level
+                      </label>
+                      <select
+                        value={selectedClassLevel}
+                        onChange={(e) => {
+                          setSelectedClassLevel(e.target.value);
+                          setSelectedStream("");
+                          setSelectedStudentIds(new Set());
+                        }}
+                        className={inputClass}
+                      >
+                        <option value="">Choose level...</option>
+                        {classLevels.map((level) => (
+                          <option key={level} value={level}>
+                            {level}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
+                        Stream (optional)
+                      </label>
+                      <select
+                        value={selectedStream}
+                        onChange={(e) => {
+                          setSelectedStream(e.target.value);
+                          setSelectedStudentIds(new Set());
+                        }}
+                        className={inputClass}
+                        disabled={!selectedClassLevel}
+                      >
+                        <option value="">All streams</option>
+                        {streams.map((stream) => (
+                          <option key={stream} value={stream}>
+                            {stream}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Student checklist (only for "several" mode) */}
+                {selectionMode === "several" && matchingStudents.length > 0 && (
                   <div>
                     <div className="mb-2 flex items-center justify-between">
                       <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-faint">
@@ -1080,42 +1190,108 @@ function ConductActionsPage() {
                       {r.evidence_url ? " · 📎" : ""}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const { data: bal } = await supabase
-                        .from("student_conduct_balances")
-                        .select("current_marks, starting_marks")
-                        .eq("student_id", r.student_id)
-                        .maybeSingle();
-                      setComposer({
-                        conductLogId: r.id,
-                        studentId: r.student_id,
-                        phone: r.student?.parent_phone ?? null,
-                        context: {
-                          studentName: r.student?.full_name ?? "your child",
-                          entryType: r.entry_type === "good_deed" ? "good_deed" : r.entry_type === "restoration" ? "restoration" : "deduction",
-                          marks: r.marks,
-                          reason: r.entry_type === "good_deed" ? r.good_deed_category?.name ?? r.reason : r.offense?.title ?? r.reason,
-                          balance: bal?.current_marks ?? null,
-                          startingMarks: bal?.starting_marks ?? (schoolSettings?.max_conduct_marks ?? 40),
-                          occurredOn: r.occurred_on,
-                          evidenceUrl: r.evidence_url ?? null,
-                          schoolName: schoolSettings?.school_name ?? "School",
-                          goodDeedCategory: r.entry_type === "good_deed" ? r.good_deed_category?.name ?? null : null,
-                        },
-                      });
-                    }}
-                    className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-brand ring-1 ring-brand/30 hover:bg-brand/10"
-                  >
-                    Message parent
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {r.entry_type === "good_deed" && (
+                      <a
+                        href={`/certificate/${r.id}`}
+                        className="rounded-lg bg-brand px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-on-brand hover:bg-brand/90"
+                      >
+                        Certificate
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const { data: bal } = await supabase
+                          .from("student_conduct_balances")
+                          .select("current_marks, starting_marks")
+                          .eq("student_id", r.student_id)
+                          .maybeSingle();
+                        setComposer({
+                          conductLogId: r.id,
+                          studentId: r.student_id,
+                          phone: r.student?.parent_phone ?? null,
+                          context: {
+                            studentName: r.student?.full_name ?? "your child",
+                            entryType: r.entry_type === "good_deed" ? "good_deed" : r.entry_type === "restoration" ? "restoration" : "deduction",
+                            marks: r.marks,
+                            reason: r.entry_type === "good_deed" ? r.good_deed_category?.name ?? r.reason : r.offense?.title ?? r.reason,
+                            balance: bal?.current_marks ?? null,
+                            startingMarks: bal?.starting_marks ?? (schoolSettings?.max_conduct_marks ?? 40),
+                            occurredOn: r.occurred_on,
+                            evidenceUrl: r.evidence_url ?? null,
+                            schoolName: schoolSettings?.school_name ?? "School",
+                            goodDeedCategory: r.entry_type === "good_deed" ? r.good_deed_category?.name ?? null : null,
+                          },
+                        });
+                      }}
+                      className="shrink-0 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-brand ring-1 ring-brand/30 hover:bg-brand/10"
+                    >
+                      Message parent
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
           </div>
         </aside>
       </div>
+      {/* Confirmation dialog for whole_school and whole_level */}
+      <Dialog open={showConfirmation} onOpenChange={(o) => !o && setShowConfirmation(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm {selectionMode === "whole_school" ? "Whole School" : "Whole Level"} Entry</DialogTitle>
+            <DialogDescription>
+              This will {entryType === "deduction" ? "deduct" : entryType === "restoration" ? "add" : "record"}{" "}
+              {entryType === "good_deed" ? "a good deed for" : `${markValue} marks ${entryType === "deduction" ? "from" : "to"}`}{" "}
+              <strong>{matchingStudents.length} student{matchingStudents.length !== 1 ? "s" : ""}</strong>
+              {selectionMode === "whole_level" && selectedClassLevel ? ` in ${selectedClassLevel}` : ""}.
+              {entryType !== "good_deed" && " This action cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl bg-glass-bright p-3 ring-1 ring-hairline">
+              <p className="text-sm text-ink">
+                <strong>Entry type:</strong> {entryType === "deduction" ? "Deduction" : entryType === "restoration" ? "Restoration" : "Good deed"}
+              </p>
+              {reason && (
+                <p className="mt-1 text-sm text-ink">
+                  <strong>Reason:</strong> {reason}
+                </p>
+              )}
+            </div>
+            {selectionMode === "whole_school" && (
+              <label className="flex items-center gap-2 text-sm text-body">
+                <input
+                  type="checkbox"
+                  checked={notifyParent}
+                  onChange={(e) => setNotifyParent(e.target.checked)}
+                />
+                Send parent SMS notifications (off by default for whole-school entries)
+              </label>
+            )}
+          </div>
+          <DialogFooter className="mt-4 flex flex-col-reverse gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setShowConfirmation(false)}
+              className="rounded-xl px-4 py-2 text-sm text-soft"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowConfirmation(false);
+                submit.mutate();
+              }}
+              className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand shadow-brand-glow"
+            >
+              Confirm and submit
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <ParentMessageComposer entry={composer} onOpenChange={(o) => !o && setComposer(null)} />
     </DashboardShell>
   );

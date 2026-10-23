@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { DashboardShell } from "@/components/DashboardShell";
 
-// @ts-expect-error - route will be generated at build time
 export const Route = createFileRoute("/_authenticated/certificate/$entryId")({
   component: CertificatePage,
 });
