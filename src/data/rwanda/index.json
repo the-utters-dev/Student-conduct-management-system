@@ -1,0 +1,42 @@
+{
+  "EAST": {
+    "Rwamagana": "rwamagana.json",
+    "Nyagatare": "nyagatare.json",
+    "Gatsibo": "gatsibo.json",
+    "Kayonza": "kayonza.json",
+    "Kirehe": "kirehe.json",
+    "Ngoma": "ngoma.json",
+    "Bugesera": "bugesera.json"
+  },
+  "KIGALI": {
+    "Nyarugenge": "nyarugenge.json",
+    "Gasabo": "gasabo.json",
+    "Kicukiro": "kicukiro.json"
+  },
+  "NORTH": {
+    "Rulindo": "rulindo.json",
+    "Gakenke": "gakenke.json",
+    "Musanze": "musanze.json",
+    "Burera": "burera.json",
+    "Gicumbi": "gicumbi.json"
+  },
+  "SOUTH": {
+    "Nyanza": "nyanza.json",
+    "Gisagara": "gisagara.json",
+    "Nyaruguru": "nyaruguru.json",
+    "Huye": "huye.json",
+    "Nyamagabe": "nyamagabe.json",
+    "Ruhango": "ruhango.json",
+    "Muhanga": "muhanga.json",
+    "Kamonyi": "kamonyi.json"
+  },
+  "WEST": {
+    "Karongi": "karongi.json",
+    "Rutsiro": "rutsiro.json",
+    "Rubavu": "rubavu.json",
+    "Nyabihu": "nyabihu.json",
+    "Ngororero": "ngororero.json",
+    "Rusizi": "rusizi.json",
+    "Nyamasheke": "nyamasheke.json"
+  }
+}

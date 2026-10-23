@@ -1,12 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
-import { CLASS_LEVELS, RWANDA_DISTRICTS, RWANDA_SECTORS, STREAMS } from "@/lib/rwanda";
+import {
+  CLASS_LEVELS,
+  RWANDA_PROVINCES,
+  RWANDA_DISTRICTS,
+  STREAMS,
+  PROVINCE_DISPLAY_NAMES,
+  getSectors,
+  getCells,
+  getVillages,
+  GENDER_OPTIONS,
+  GUARDIAN_RELATIONSHIPS,
+  type Province,
+} from "@/lib/rwanda";
 import { PromotionDialog } from "@/components/PromotionDialog";
 import { AcademicProgressionModal } from "@/components/AcademicProgressionModal";
 import {
@@ -278,7 +290,7 @@ function StudentsPage() {
                   <td className="px-4 py-3 text-[12px] text-body">{s.admission_no}</td>
                   <td className="px-4 py-3 text-[12px] text-body">{s.class_name}</td>
                   <td className="px-4 py-3 text-[12px] text-body">
-                    {[s.cell, s.sector, s.district].filter(Boolean).join(", ") || "—"}
+                    {[s.village, s.cell, s.sector, s.district].filter(Boolean).join(", ") || "—"}
                   </td>
                   <td className="px-4 py-3 text-[12px] text-body">
                     <div>{parents ?? "—"}</div>
@@ -377,9 +389,11 @@ const EMPTY = {
   admission_no: "",
   date_of_birth: "",
   gender: "",
+  province: "",
   district: "",
   sector: "",
   cell: "",
+  village: "",
   class_level: "",
   stream: "",
   combination: "",
@@ -389,7 +403,8 @@ const EMPTY = {
   mother_name: "",
   guardian_email: "",
   notification_channel: "sms",
-  primary_contact: "guardian",
+  primary_contact: "father",
+  guardian_relationship: "",
 };
 type Form = typeof EMPTY;
 
@@ -404,6 +419,7 @@ function validate(f: Form) {
     if (age < 8 || age > 30) e.date_of_birth = "Enter a realistic date of birth (age 8–30).";
   }
   if (!f.gender) e.gender = "Select sex.";
+  if (!f.province) e.province = "Select a province.";
   if (!f.district) e.district = "Select a district.";
   if (!f.sector.trim()) e.sector = "Sector is required.";
   if (!f.cell.trim()) e.cell = "Cell is required.";
@@ -428,9 +444,41 @@ function AddStudentDialog({ open, onOpenChange, academicYear }: { open: boolean;
   const qc = useQueryClient();
   const [f, setF] = useState<Form>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
+  const [sectors, setSectors] = useState<string[]>([]);
+  const [cells, setCells] = useState<string[]>([]);
+  const [villages, setVillages] = useState<string[]>([]);
+  const [customSector, setCustomSector] = useState(false);
+  const [customCell, setCustomCell] = useState(false);
+  const [customVillage, setCustomVillage] = useState(false);
   const set = (k: keyof Form, v: string) => setF((p) => ({ ...p, [k]: v }));
-  const sectors = RWANDA_SECTORS[f.district];
   const today = new Date().toISOString().slice(0, 10);
+
+  // Load sectors when district changes
+  useEffect(() => {
+    if (f.district && !customSector) {
+      getSectors(f.district).then((data) => setSectors(data)).catch(() => setSectors([]));
+    } else {
+      setSectors([]);
+    }
+  }, [f.district, customSector]);
+
+  // Load cells when sector changes
+  useEffect(() => {
+    if (f.district && f.sector && !customCell) {
+      getCells(f.district, f.sector).then((data) => setCells(data)).catch(() => setCells([]));
+    } else {
+      setCells([]);
+    }
+  }, [f.district, f.sector, customCell]);
+
+  // Load villages when cell changes
+  useEffect(() => {
+    if (f.district && f.sector && f.cell && !customVillage) {
+      getVillages(f.district, f.sector, f.cell).then((data) => setVillages(data)).catch(() => setVillages([]));
+    } else {
+      setVillages([]);
+    }
+  }, [f.district, f.sector, f.cell, customVillage]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -453,6 +501,8 @@ function AddStudentDialog({ open, onOpenChange, academicYear }: { open: boolean;
       };
       const extended = {
         ...base,
+        province: f.province || null,
+        village: f.village.trim() || null,
         father_name: f.father_name.trim() || null,
         mother_name: f.mother_name.trim() || null,
         guardian_email: f.guardian_email.trim() || null,
@@ -510,26 +560,121 @@ function AddStudentDialog({ open, onOpenChange, academicYear }: { open: boolean;
           {field("date_of_birth", "Date of birth", <input type="date" max={today} className={inp} value={f.date_of_birth} onChange={(e) => set("date_of_birth", e.target.value)} />)}
           {field("gender", "Sex", (
             <select className={inp} value={f.gender} onChange={(e) => set("gender", e.target.value)}>
-              <option value="">Select…</option><option>Male</option><option>Female</option>
+              <option value="">Select…</option>
+              {GENDER_OPTIONS.map((g) => <option key={g}>{g}</option>)}
             </select>
           ))}
-          {field("district", "District", (
-            <select className={inp} value={f.district} onChange={(e) => setF((p) => ({ ...p, district: e.target.value, sector: "", cell: "" }))}>
-              <option value="">Select district…</option>
-              {Object.entries(RWANDA_DISTRICTS).map(([prov, ds]) => (
-                <optgroup key={prov} label={prov}>{ds.map((d) => <option key={d}>{d}</option>)}</optgroup>
+
+          <div className="border-t border-hairline pt-3 text-xs font-bold uppercase tracking-[0.12em] text-faint sm:col-span-2">Location (Rwanda)</div>
+
+          {field("province", "Province", (
+            <select className={inp} value={f.province} onChange={(e) => {
+              setF((p) => ({ ...p, province: e.target.value, district: "", sector: "", cell: "", village: "" }));
+              setCustomSector(false);
+              setCustomCell(false);
+              setCustomVillage(false);
+            }}>
+              <option value="">Select province…</option>
+              {RWANDA_PROVINCES.map((p) => (
+                <option key={p} value={p}>{PROVINCE_DISPLAY_NAMES[p]}</option>
               ))}
             </select>
           ))}
-          {field("sector", "Sector", sectors ? (
-            <select className={inp} value={f.sector} onChange={(e) => set("sector", e.target.value)}>
-              <option value="">Select sector…</option>
-              {sectors.map((s) => <option key={s}>{s}</option>)}
+
+          {field("district", "District", (
+            <select className={inp} value={f.district} disabled={!f.province} onChange={(e) => {
+              setF((p) => ({ ...p, district: e.target.value, sector: "", cell: "", village: "" }));
+              setCustomSector(false);
+              setCustomCell(false);
+              setCustomVillage(false);
+            }}>
+              <option value="">Select district…</option>
+              {f.province && RWANDA_DISTRICTS[f.province]?.map((d) => <option key={d}>{d}</option>)}
+            </select>
+          ))}
+
+          {field("sector", "Sector", customSector ? (
+            <div>
+              <input className={inp} value={f.sector} onChange={(e) => set("sector", e.target.value)} placeholder="Enter sector name" />
+              <button type="button" onClick={() => { setCustomSector(false); set("sector", ""); }} className="mt-1 text-xs text-brand underline">
+                Choose from list instead
+              </button>
+            </div>
+          ) : sectors.length > 0 ? (
+            <div>
+              <select className={inp} value={f.sector} onChange={(e) => {
+                if (e.target.value === "__custom__") {
+                  setCustomSector(true);
+                  set("sector", "");
+                } else {
+                  setF((p) => ({ ...p, sector: e.target.value, cell: "", village: "" }));
+                  setCustomCell(false);
+                  setCustomVillage(false);
+                }
+              }}>
+                <option value="">Select sector…</option>
+                {sectors.map((s) => <option key={s}>{s}</option>)}
+                <option value="__custom__">Not in list (type manually)</option>
+              </select>
+            </div>
+          ) : (
+            <input className={inp} disabled={!f.district} placeholder={f.district ? "Loading sectors…" : "Choose a district first"} value={f.sector} readOnly />
+          ))}
+
+          {field("cell", "Cell", customCell ? (
+            <div>
+              <input className={inp} value={f.cell} onChange={(e) => set("cell", e.target.value)} placeholder="Enter cell name" />
+              <button type="button" onClick={() => { setCustomCell(false); set("cell", ""); }} className="mt-1 text-xs text-brand underline">
+                Choose from list instead
+              </button>
+            </div>
+          ) : cells.length > 0 ? (
+            <div>
+              <select className={inp} value={f.cell} onChange={(e) => {
+                if (e.target.value === "__custom__") {
+                  setCustomCell(true);
+                  set("cell", "");
+                } else {
+                  setF((p) => ({ ...p, cell: e.target.value, village: "" }));
+                  setCustomVillage(false);
+                }
+              }}>
+                <option value="">Select cell…</option>
+                {cells.map((c) => <option key={c}>{c}</option>)}
+                <option value="__custom__">Not in list (type manually)</option>
+              </select>
+            </div>
+          ) : (
+            <input className={inp} disabled={!f.sector} placeholder={f.sector ? "Loading cells…" : "Choose a sector first"} value={f.cell} readOnly />
+          ))}
+
+          {field("village", "Village (optional)", customVillage ? (
+            <div>
+              <input className={inp} value={f.village} onChange={(e) => set("village", e.target.value)} placeholder="Enter village name" />
+              {villages.length > 0 && (
+                <button type="button" onClick={() => { setCustomVillage(false); set("village", ""); }} className="mt-1 text-xs text-brand underline">
+                  Choose from list instead
+                </button>
+              )}
+            </div>
+          ) : villages.length > 0 ? (
+            <select className={inp} value={f.village} onChange={(e) => {
+              if (e.target.value === "__custom__") {
+                setCustomVillage(true);
+                set("village", "");
+              } else {
+                set("village", e.target.value);
+              }
+            }}>
+              <option value="">Select village…</option>
+              {villages.map((v) => <option key={v}>{v}</option>)}
+              <option value="__custom__">Not in list (type manually)</option>
             </select>
           ) : (
-            <input className={inp} disabled={!f.district} placeholder={f.district ? "Sector name" : "Choose a district first"} value={f.sector} onChange={(e) => set("sector", e.target.value)} />
+            <input className={inp} disabled={!f.cell} placeholder={f.cell ? "Loading villages…" : "Choose a cell first"} value={f.village} onChange={(e) => set("village", e.target.value)} />
           ))}
-          {field("cell", "Cell", <input className={inp} disabled={!f.sector} placeholder={f.sector ? "Cell name" : "Choose a sector first"} value={f.cell} onChange={(e) => set("cell", e.target.value)} />)}
+
+          <div className="border-t border-hairline pt-3 text-xs font-bold uppercase tracking-[0.12em] text-faint sm:col-span-2">Academic details</div>
           {field("class_level", "Level", (
             <select className={inp} value={f.class_level} onChange={(e) => set("class_level", e.target.value)}>
               <option value="">Select…</option>{CLASS_LEVELS.map((l) => <option key={l}>{l}</option>)}

@@ -1,0 +1,51 @@
+{
+  "provinces": [
+    "EAST",
+    "KIGALI",
+    "NORTH",
+    "SOUTH",
+    "WEST"
+  ],
+  "districts": {
+    "KIGALI": [
+      "Gasabo",
+      "Kicukiro",
+      "Nyarugenge"
+    ],
+    "SOUTH": [
+      "Gisagara",
+      "Huye",
+      "Kamonyi",
+      "Muhanga",
+      "Nyamagabe",
+      "Nyanza",
+      "Nyaruguru",
+      "Ruhango"
+    ],
+    "WEST": [
+      "Karongi",
+      "Ngororero",
+      "Nyabihu",
+      "Nyamasheke",
+      "Rubavu",
+      "Rusizi",
+      "Rutsiro"
+    ],
+    "NORTH": [
+      "Burera",
+      "Gakenke",
+      "Gicumbi",
+      "Musanze",
+      "Rulindo"
+    ],
+    "EAST": [
+      "Bugesera",
+      "Gatsibo",
+      "Kayonza",
+      "Kirehe",
+      "Ngoma",
+      "Nyagatare",
+      "Rwamagana"
+    ]
+  }
+}

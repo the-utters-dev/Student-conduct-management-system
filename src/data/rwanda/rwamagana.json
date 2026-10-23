@@ -1,0 +1,672 @@
+{
+  "province": "EAST",
+  "district": "Rwamagana",
+  "sectors": {
+    "Fumbwe": {
+      "Mununu": [
+        "Cyingara",
+        "Janjagiro",
+        "Kabeza",
+        "Kabuga",
+        "Ndinda",
+        "Nyirabiteri"
+      ],
+      "Nyagasambu": [
+        "Mataba",
+        "Rambura",
+        "Rebero",
+        "Rugarama",
+        "Rugenge"
+      ],
+      "Nyakagunga": [
+        "Akabeza",
+        "Kibaza",
+        "Kirehe",
+        "Rugarama"
+      ],
+      "Nyamirama": [
+        "Agatare",
+        "Akagarama",
+        "Bigarama",
+        "Cyarutabana",
+        "Makwandi",
+        "Ntungamo",
+        "Shenga"
+      ],
+      "Nyarubuye": [
+        "Gihima",
+        "Gitwe",
+        "Kabirizi",
+        "Kivugiza",
+        "Murambi",
+        "Rurembo"
+      ],
+      "Sasabirago": [
+        "Birembo",
+        "Byimana",
+        "Irukwaya",
+        "Karambo",
+        "Munini"
+      ]
+    },
+    "Gahengeri": {
+      "Gihumuza": [
+        "Cyanga",
+        "Gatare",
+        "Kabeza",
+        "Kajevuba",
+        "Nyirabujari",
+        "Rebero"
+      ],
+      "Kagezi": [
+        "Akabuga",
+        "Kabonero",
+        "Rwarugaju",
+        "Samatare"
+      ],
+      "Kanyangese": [
+        "Agakari",
+        "Gatenderi",
+        "Ruhita",
+        "Umunini"
+      ],
+      "Kibare": [
+        "Iramiro",
+        "Kabuye",
+        "Kanserege",
+        "Karutimbo",
+        "Kinyovi",
+        "Rurambi"
+      ],
+      "Mutamwa": [
+        "Agasharu",
+        "Kamugasa",
+        "Nyabagaza",
+        "Nyirarwirungu",
+        "Rubonobono",
+        "Rugagi",
+        "Ryasenteteri"
+      ],
+      "Rugarama": [
+        "Amatafari",
+        "Byimana",
+        "Mataba",
+        "Nyakiri",
+        "Nyarucyamo",
+        "Rebero"
+      ],
+      "Runyinya": [
+        "Akamasasa",
+        "Cyeru",
+        "Gacunshu",
+        "Kabarore",
+        "Karambo",
+        "Kiyovu",
+        "Ruyumba",
+        "Ryamuzuka"
+      ],
+      "Rweri": [
+        "Kabigondo",
+        "Kamurindi",
+        "Kinteko",
+        "Kiruruma",
+        "Mataba",
+        "Nyamugari"
+      ]
+    },
+    "Gishali": {
+      "Binunga": [
+        "Busharu",
+        "Nyakivomo",
+        "Rurindimura"
+      ],
+      "Bwinsanga": [
+        "Akanogo",
+        "Mugusha",
+        "Nyakabungo",
+        "Shaburondo"
+      ],
+      "Cyinyana": [
+        "Nyagacyamo",
+        "Nyakagarama",
+        "Rurembo"
+      ],
+      "Gati": [
+        "Agatare",
+        "Nyamabuye",
+        "Umunanira",
+        "Uruhuha"
+      ],
+      "Kavumu": [
+        "Akabuga",
+        "Ingeyo",
+        "Kibonde",
+        "Uruyenzi"
+      ],
+      "Ruhimbi": [
+        "Abakina",
+        "Byimana",
+        "Cyiri",
+        "Rwagahaya",
+        "Umunini"
+      ],
+      "Ruhunda": [
+        "Mpungwe",
+        "Nyagahinga",
+        "Nyagakombe"
+      ]
+    },
+    "Karenge": {
+      "Bicaca": [
+        "BicacaCentre",
+        "Cyanyirampazi",
+        "Cyarugaju",
+        "Kabeza",
+        "Kajevuba",
+        "Karuyenzi",
+        "Runzenze"
+      ],
+      "Byimana": [
+        "Byimana",
+        "Karambo",
+        "Kiyaya",
+        "Rukori"
+      ],
+      "Kabasore": [
+        "Ipide",
+        "Kabasore",
+        "Migamba",
+        "Nyagatovu",
+        "Ruvomo"
+      ],
+      "Kangamba": [
+        "Byimana",
+        "Kagese",
+        "Kangamba",
+        "Kimarambasa",
+        "Nkongi"
+      ],
+      "Karenge": [
+        "Bwiza",
+        "Karenge",
+        "Ntebe",
+        "Rebero"
+      ],
+      "Nyabubare": [
+        "Feri",
+        "Kanyangese",
+        "Nyabubare",
+        "Rwinka",
+        "Ryamugabo"
+      ],
+      "Nyamatete": [
+        "Cyerwa",
+        "Mutabo",
+        "Ndengo",
+        "Nyagasenyi",
+        "Nyakabuye",
+        "Nyamatete"
+      ]
+    },
+    "Kigabiro": {
+      "Bwiza": [
+        "Gitega",
+        "Kagererao",
+        "Munini",
+        "Nyakabande",
+        "Rutaka",
+        "Rutonde",
+        "Rweza"
+      ],
+      "Cyanya": [
+        "Bigabiro",
+        "Biraro",
+        "Busanza",
+        "Cyahafi",
+        "Kabeza",
+        "Kabuye",
+        "Kamata",
+        "Karuhayi",
+        "Karutimbo",
+        "Rurembo"
+      ],
+      "Nyagasenyi": [
+        "Gahonogo",
+        "Kavura",
+        "Kayenzi",
+        "Kigega",
+        "Kirehe",
+        "Ramba",
+        "Rusave",
+        "Umuganura"
+      ],
+      "Sibagire": [
+        "Bacyoro",
+        "Bugugu",
+        "Cyimpima",
+        "Gasharu",
+        "Kabuga",
+        "Kamanga",
+        "Miyange"
+      ],
+      "Sovu": [
+        "Cyaruhogo",
+        "Gatare",
+        "Kiruhura",
+        "Nyabishunzi",
+        "Rugobagoba",
+        "Rushangara"
+      ]
+    },
+    "Muhazi": {
+      "Byeza": [
+        "Gatobotobo",
+        "Kabeza",
+        "Nyarukombe"
+      ],
+      "Kabare": [
+        "Birembo",
+        "Ubwiza",
+        "Umunini",
+        "Uwimanzi"
+      ],
+      "Karambi": [
+        "Gahengeri",
+        "Kayenzi",
+        "Kinunga",
+        "Ragwe"
+      ],
+      "Karitutu": [
+        "Agatare",
+        "Cyeru",
+        "Karambo",
+        "Kingondo",
+        "Nyarugarama"
+      ],
+      "Kitazigurwa": [
+        "Byimana",
+        "Gasharu",
+        "Kabirizi",
+        "Karwiru"
+      ],
+      "Murambi": [
+        "Gasharu",
+        "Kabusunzu",
+        "Nyendo",
+        "Yabaranda"
+      ],
+      "Nsinda": [
+        "Akabeza",
+        "Kibare",
+        "Rubirizi"
+      ],
+      "Ntebe": [
+        "Amagaju",
+        "Urugero",
+        "Urugwiro"
+      ],
+      "Nyarusange": [
+        "Akagarama",
+        "Akatorero",
+        "Gahondo",
+        "Kanywiriri",
+        "Kavura",
+        "Kidogo",
+        "Mpinga",
+        "Plage",
+        "Umubuga"
+      ]
+    },
+    "Munyaga": {
+      "Kaduha": [
+        "Gishike",
+        "Kababero",
+        "Kabare",
+        "Kamamana",
+        "Kangabo",
+        "Kigabiro",
+        "Rwakigara",
+        "Rwimbogo"
+      ],
+      "Nkungu": [
+        "Kabuye",
+        "Kiryango",
+        "Mataba",
+        "Nyagakombe",
+        "Rudashya",
+        "Rushangara"
+      ],
+      "Rweru": [
+        "Birayi",
+        "Gatare",
+        "Kabingo",
+        "Kanyegera",
+        "Mubuga"
+      ],
+      "Zinga": [
+        "Cyinganzwa",
+        "Kabazeyi",
+        "Karambo",
+        "Rwisange"
+      ]
+    },
+    "Munyiginya": {
+      "Binunga": [
+        "Irebero",
+        "Isangano",
+        "Kabeza",
+        "Umuhumuro",
+        "Urugwiza"
+      ],
+      "Bwana": [
+        "Akabuye",
+        "Kiruhura",
+        "Rutembo",
+        "Rwagahigi",
+        "Rwamugurusu",
+        "Rweza",
+        "Umurinzi"
+      ],
+      "Cyarukamba": [
+        "Kabenda",
+        "Kagarama",
+        "Ndago",
+        "Rweza"
+      ],
+      "Cyimbazi": [
+        "Agatare",
+        "Akabuye",
+        "Ntunga",
+        "Nyagakombe"
+      ],
+      "Nkomangwa": [
+        "Bakannyi",
+        "Kabuye",
+        "Karubisha",
+        "Nyagahanga",
+        "Ryamirenge"
+      ],
+      "Nyarubuye": [
+        "Babasha",
+        "Buyanja",
+        "Kabeza",
+        "Kimara",
+        "Kiyovu",
+        "Mazinga",
+        "Nkindi"
+      ]
+    },
+    "Musha": {
+      "Akabare": [
+        "Akabare",
+        "Binunga",
+        "Budahigwa",
+        "Duha",
+        "Gashikiri",
+        "Rugabano",
+        "Rukombe"
+      ],
+      "Budahanda": [
+        "Karambo",
+        "Nyantoki",
+        "Rwabiyange"
+      ],
+      "Kagarama": [
+        "Kagarama",
+        "Kiruhura",
+        "Muhogoto",
+        "Nyagacyamo",
+        "Nyamigano"
+      ],
+      "Musha": [
+        "Gatika",
+        "Kadasumbwa",
+        "Karifuru",
+        "Nyakiriba",
+        "Rugarama"
+      ],
+      "Nyabisindu": [
+        "Agashuhe",
+        "Busanza",
+        "Bwiza",
+        "Nyabisindu",
+        "Rujumbura",
+        "Rwamivu",
+        "Umunini"
+      ],
+      "Nyakabanda": [
+        "Bitsibo",
+        "Ruhita",
+        "Rutoma"
+      ]
+    },
+    "Muyumbu": {
+      "Akinyambo": [
+        "Akubugingo",
+        "Kampigika",
+        "Rugarama",
+        "Ryabaheshwa"
+      ],
+      "Bujyujyu": [
+        "Gatare",
+        "Gishaka",
+        "Kabeza",
+        "Kagona",
+        "Karama",
+        "Rebero",
+        "Rubaza",
+        "Rusave",
+        "Yeruzalemu"
+      ],
+      "Murehe": [
+        "Bitega",
+        "Kajororo",
+        "Kayigi",
+        "Miyove",
+        "Murehe",
+        "Ruvomo"
+      ],
+      "Ntebe": [
+        "Gakomeye",
+        "Gasave",
+        "Gisenyi",
+        "Kabagabo",
+        "Kajevuba",
+        "Kanyinya",
+        "Nyarubambo",
+        "Samuramba"
+      ],
+      "Nyarukombe": [
+        "Gatuza",
+        "Gitaraga",
+        "Gituza",
+        "Kinunga",
+        "Marembo",
+        "Mugogo",
+        "Mumena",
+        "Rubona"
+      ]
+    },
+    "Mwulire": {
+      "Bicumbi": [
+        "Bicumbi",
+        "Gasharu",
+        "Karama",
+        "Manene",
+        "Nyagihanga",
+        "Rwimbogo",
+        "Sabusaro"
+      ],
+      "Bushenyi": [
+        "Byange",
+        "Kabahima",
+        "Kangaruye",
+        "Rebero",
+        "Rubiha",
+        "Ruseke"
+      ],
+      "Mwulire": [
+        "Akagarama",
+        "Cyome",
+        "Gisanza",
+        "Kigabiro",
+        "Mpinga",
+        "MuniniI",
+        "MuniniIi",
+        "Rebero"
+      ],
+      "Ntunga": [
+        "Cyimbazi",
+        "Kabacuzi",
+        "Kadasumbwa",
+        "Karuzingura",
+        "Kiyovu",
+        "Nkira",
+        "Ntunga",
+        "Rugarama",
+        "Rugenge"
+      ]
+    },
+    "Nyakaliro": {
+      "Bihembe": [
+        "Bihembe",
+        "Busimbuzi",
+        "Butare",
+        "Kabere",
+        "Kanyangese",
+        "Mubumbwe",
+        "Ngarama",
+        "Rusheshe"
+      ],
+      "Gatare": [
+        "Gatare",
+        "Karogo",
+        "Kigina",
+        "Runzenze",
+        "Samuduha"
+      ],
+      "Gishore": [
+        "Gishore",
+        "Kagarama",
+        "Matyazo",
+        "Nyirabuhene",
+        "Rugende",
+        "Ruhanika",
+        "Rusagara",
+        "Rusave",
+        "Rususa"
+      ],
+      "Munini": [
+        "Akamasatura",
+        "Munini",
+        "Nyakagarama",
+        "Nyarurembo",
+        "Nyarutovu",
+        "Nyiramitemeri",
+        "Rwamibungo",
+        "Rwankacari"
+      ],
+      "Rwimbogo": [
+        "Cyaruhinda",
+        "Kamashaza",
+        "Kasemanyana",
+        "Kimicanga",
+        "Nduba",
+        "Nduhuye",
+        "Rwimbogo",
+        "Ryarurindo"
+      ]
+    },
+    "Nzige": {
+      "Akanzu": [
+        "Akanzige",
+        "Akanzu",
+        "Cyahafi",
+        "Cyerwa",
+        "Gikoni",
+        "Gitanu",
+        "Kiyovu",
+        "Nyarugenge"
+      ],
+      "Kigarama": [
+        "Gisenyi",
+        "Kajevuba",
+        "Kamabuye",
+        "Karukannyi",
+        "Mikoni",
+        "Mubuga",
+        "Nyarutovu",
+        "Rugunga"
+      ],
+      "Murama": [
+        "Agasharu",
+        "Gatoki",
+        "Kabeza",
+        "Kamakuka",
+        "Kibabara",
+        "Ndinda",
+        "Nyarusange"
+      ],
+      "Rugarama": [
+        "Bicaca",
+        "Bitega",
+        "Kayibanda",
+        "Nyabugogo",
+        "Ruvomo",
+        "Rwagatsama"
+      ]
+    },
+    "Rubona": {
+      "Byinza": [
+        "Bidudu",
+        "Gitwa",
+        "KabayangeI",
+        "KabayangeIi",
+        "Mumahoro",
+        "Munini",
+        "Umumeyu",
+        "Uwadesa"
+      ],
+      "Kabatasi": [
+        "Agasharu",
+        "Gitaraga",
+        "Kabuye",
+        "Kibabara",
+        "Kiboha",
+        "Midahandwa",
+        "Mitari",
+        "Nyagatare",
+        "Rusenyi",
+        "Umurehe"
+      ],
+      "Kabuye": [
+        "Agatare",
+        "Cyamuyango",
+        "Rubumba",
+        "Rutare"
+      ],
+      "Karambi": [
+        "Bigaga",
+        "Byobo",
+        "Karambi",
+        "Mataba",
+        "Rugarama"
+      ],
+      "Mabare": [
+        "Amarimba",
+        "Bitare",
+        "Gasharu",
+        "Nyamabuye",
+        "Rubirizi",
+        "Rusanza",
+        "Umubuga",
+        "Urugwiro"
+      ],
+      "Nawe": [
+        "Cyiri",
+        "Gaseke",
+        "Rudashya"
+      ]
+    }
+  }
+}

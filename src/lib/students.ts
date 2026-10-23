@@ -12,9 +12,11 @@ export interface StudentRow {
   house: string | null;
   gender: string | null;
   date_of_birth: string | null;
+  province?: string | null;
   district: string | null;
   sector: string | null;
   cell: string | null;
+  village?: string | null;
   parent_name: string | null;
   parent_phone: string | null;
   is_active: boolean;
