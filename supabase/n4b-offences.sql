@@ -68,7 +68,7 @@ DO $$ BEGIN
     AND policyname = 'Manage offences permission'
   ) THEN
     CREATE POLICY "Manage offences permission" ON public.offence_categories
-      FOR INSERT, UPDATE, DELETE
+      FOR ALL
       USING (
         public.is_platform_admin(auth.uid())
         OR (

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { DashboardShell } from "@/components/DashboardShell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/evidence";
 import { useAuth, type AppRole, type PermissionKey } from "@/hooks/useAuth";
 import { useSchoolSettings, DEFAULT_SETTINGS, type SchoolSettings } from "@/hooks/useSchoolSettings";
 import { ACCENTS, useTheme, type AccentKey } from "@/hooks/useTheme";
@@ -768,6 +769,16 @@ function OffencesTab() {
     description: "",
   });
   const [editingOffenceId, setEditingOffenceId] = useState<string | null>(null);
+  const [editOffence, setEditOffence] = useState({
+    code: "",
+    title: "",
+    category_id: "",
+    severity: "minor",
+    marks: 2,
+    description: "",
+  });
+  const [offencesInUse, setOffencesInUse] = useState<Set<string>>(new Set());
+  const [categoriesInUse, setCategoriesInUse] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
   // Fetch categories
@@ -798,6 +809,37 @@ function OffencesTab() {
     },
     enabled: !!schoolId,
   });
+
+  // Check which offences and categories are in use
+  useEffect(() => {
+    async function checkUsage() {
+      if (!offences || !categories) return;
+
+      const offencesInUseSet = new Set<string>();
+      const categoriesInUseSet = new Set<string>();
+
+      // Check each offence
+      for (const offence of offences) {
+        const { data } = await db.rpc("is_offence_in_use", { _offence_id: offence.id });
+        if (data) {
+          offencesInUseSet.add(offence.id);
+        }
+      }
+
+      // Check each category
+      for (const category of categories) {
+        const { data } = await db.rpc("is_category_in_use", { _category_id: category.id });
+        if (data) {
+          categoriesInUseSet.add(category.id);
+        }
+      }
+
+      setOffencesInUse(offencesInUseSet);
+      setCategoriesInUse(categoriesInUseSet);
+    }
+
+    void checkUsage();
+  }, [offences, categories]);
 
   // Category management functions
   async function addCategory() {
@@ -891,6 +933,74 @@ function OffencesTab() {
     }
   }
 
+  async function updateOffence(id: string) {
+    if (!editOffence.code.trim() || !editOffence.title.trim()) {
+      toast.error("Code and title are required");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await (supabase.from("offenses_catalog" as never) as any)
+        .update({
+          code: editOffence.code.trim(),
+          title: editOffence.title.trim(),
+          category_id: editOffence.category_id || null,
+          category: categories?.find(c => c.id === editOffence.category_id)?.name || null,
+          severity: editOffence.severity,
+          marks_deducted: editOffence.marks,
+          description: editOffence.description.trim() || null,
+        })
+        .eq("id", id);
+      if (error) throw error;
+      toast.success("Offence updated");
+      setEditingOffenceId(null);
+      void qc.invalidateQueries({ queryKey: ["offences-catalog", schoolId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeOffence(id: string) {
+    const isInUse = offencesInUse.has(id);
+
+    if (isInUse) {
+      // If in use, only deactivate
+      setBusy(true);
+      try {
+        const { error } = await (supabase.from("offenses_catalog" as never) as any)
+          .update({ is_active: false })
+          .eq("id", id);
+        if (error) throw error;
+        toast.success("Offence deactivated (it has been used in conduct logs)");
+        void qc.invalidateQueries({ queryKey: ["offences-catalog", schoolId] });
+      } catch (e) {
+        toast.error((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      // If not in use, actually delete
+      if (!confirm("Are you sure you want to delete this offence? This cannot be undone.")) {
+        return;
+      }
+      setBusy(true);
+      try {
+        const { error } = await (supabase.from("offenses_catalog" as never) as any)
+          .delete()
+          .eq("id", id);
+        if (error) throw error;
+        toast.success("Offence deleted");
+        void qc.invalidateQueries({ queryKey: ["offences-catalog", schoolId] });
+      } catch (e) {
+        toast.error((e as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    }
+  }
+
   async function toggleOffenceActive(id: string, isActive: boolean) {
     setBusy(true);
     try {
@@ -972,6 +1082,9 @@ function OffencesTab() {
                 ) : (
                   <>
                     <span className="flex-1 text-sm font-medium text-ink">{cat.name}</span>
+                    {categoriesInUse.has(cat.id) && (
+                      <span className="rounded-lg bg-ok/15 px-2 py-1 text-xs font-semibold text-ok">In use</span>
+                    )}
                     <button
                       onClick={() => {
                         setEditingCategoryId(cat.id);
@@ -1061,19 +1174,115 @@ function OffencesTab() {
             {Object.entries(groupedOffences || {}).map(([category, offs]) => (
               <div key={category}>
                 <h4 className="mb-2 text-sm font-bold text-soft">{category}</h4>
-                <div className="space-y-1">
+                <div className="space-y-2">
                   {offs.map((off) => (
-                    <div key={off.id} className="flex items-center gap-2 rounded-lg bg-glass-bright p-2 text-sm">
-                      <span className="w-16 font-mono text-xs text-soft">{off.code}</span>
-                      <span className="flex-1 text-ink">{off.title}</span>
-                      <span className="text-xs text-faint">{off.severity}</span>
-                      <span className="text-xs text-faint">-{off.marks_deducted}</span>
-                      <button
-                        onClick={() => toggleOffenceActive(off.id, !off.is_active)}
-                        className={`text-xs ${off.is_active ? "text-ok" : "text-faint"}`}
-                      >
-                        {off.is_active ? "Active" : "Inactive"}
-                      </button>
+                    <div key={off.id}>
+                      {editingOffenceId === off.id ? (
+                        // Edit mode
+                        <div className="rounded-lg bg-glass-bright p-3 space-y-2">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <input
+                              type="text"
+                              value={editOffence.code}
+                              onChange={(e) => setEditOffence({ ...editOffence, code: e.target.value })}
+                              placeholder="Code"
+                              className={inp}
+                            />
+                            <input
+                              type="text"
+                              value={editOffence.title}
+                              onChange={(e) => setEditOffence({ ...editOffence, title: e.target.value })}
+                              placeholder="Title"
+                              className={inp}
+                            />
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <select
+                              value={editOffence.category_id}
+                              onChange={(e) => setEditOffence({ ...editOffence, category_id: e.target.value })}
+                              className={inp}
+                            >
+                              <option value="">Select category</option>
+                              {activeCategories.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={editOffence.severity}
+                              onChange={(e) => setEditOffence({ ...editOffence, severity: e.target.value })}
+                              className={inp}
+                            >
+                              <option value="minor">Minor</option>
+                              <option value="moderate">Moderate</option>
+                              <option value="serious">Serious</option>
+                              <option value="critical">Critical</option>
+                            </select>
+                            <input
+                              type="number"
+                              value={editOffence.marks}
+                              onChange={(e) => setEditOffence({ ...editOffence, marks: parseInt(e.target.value) || 0 })}
+                              placeholder="Marks"
+                              className={inp}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={editOffence.description}
+                            onChange={(e) => setEditOffence({ ...editOffence, description: e.target.value })}
+                            placeholder="Description (optional)"
+                            className={inp}
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => updateOffence(off.id)} disabled={busy} className="text-sm text-ok font-semibold">
+                              Save
+                            </button>
+                            <button onClick={() => setEditingOffenceId(null)} disabled={busy} className="text-sm text-soft">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        // View mode
+                        <div className="flex items-center gap-2 rounded-lg bg-glass-bright p-2 text-sm">
+                          <span className="w-16 font-mono text-xs text-soft">{off.code}</span>
+                          <span className="flex-1 text-ink">{off.title}</span>
+                          {offencesInUse.has(off.id) && (
+                            <span className="rounded-lg bg-ok/15 px-2 py-1 text-xs font-semibold text-ok">In use</span>
+                          )}
+                          <span className="text-xs text-faint">{off.severity}</span>
+                          <span className="text-xs text-faint">-{off.marks_deducted}</span>
+                          <button
+                            onClick={() => {
+                              setEditingOffenceId(off.id);
+                              setEditOffence({
+                                code: off.code,
+                                title: off.title,
+                                category_id: off.category_id || "",
+                                severity: off.severity,
+                                marks: off.marks_deducted,
+                                description: off.description || "",
+                              });
+                            }}
+                            disabled={busy}
+                            className="text-xs text-brand font-semibold"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => removeOffence(off.id)}
+                            disabled={busy}
+                            className="text-xs text-danger font-semibold"
+                          >
+                            {offencesInUse.has(off.id) ? "Deactivate" : "Remove"}
+                          </button>
+                          <button
+                            onClick={() => toggleOffenceActive(off.id, !off.is_active)}
+                            className={`text-xs ${off.is_active ? "text-ok" : "text-faint"}`}
+                          >
+                            {off.is_active ? "Active" : "Inactive"}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -94,6 +94,8 @@ function PlatformPage() {
   const [deleteDialog, setDeleteDialog] = useState<{ id: string; name: string } | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [tempPasswordDialog, setTempPasswordDialog] = useState<{ password: string; userName: string } | null>(null);
+  const [staffFilter, setStaffFilter] = useState("");
+  const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set());
 
   const q = useQuery({ queryKey: ["platform"], queryFn: () => overviewFn(), enabled: isPlatformAdmin });
   const refresh = () => qc.invalidateQueries({ queryKey: ["platform"] });
@@ -233,7 +235,9 @@ function PlatformPage() {
                 {schools.map((s) => (
                   <tr key={s.id} className="border-t border-hairline">
                     <td className="py-2 font-semibold text-ink">
-                      {s.name}
+                      <Link to="/platform/schools/$schoolId" params={{ schoolId: s.id }} className="text-brand hover:underline">
+                        {s.name}
+                      </Link>
                       {s.status_reason && (
                         <span className="ml-2 text-[11px] text-soft" title={`Reason: ${s.status_reason}`}>
                           ({s.status_reason.slice(0, 30)}

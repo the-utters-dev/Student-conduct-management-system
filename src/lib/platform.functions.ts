@@ -96,6 +96,82 @@ export const getPlatformOverview = createServerFn({ method: "GET" })
     return { schools, staff };
   });
 
+export const getSchoolDetails = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string }) => {
+    if (!UUID.test(d.id)) throw new Error("Invalid school ID.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+
+    // Fetch school data
+    const { data: school, error: schoolError } = await admin
+      .from("schools")
+      .select("*")
+      .eq("id", data.id)
+      .single();
+
+    if (schoolError) throw new Error(schoolError.message);
+    if (!school) throw new Error("School not found.");
+
+    // Fetch student count
+    const { count: studentCount } = await admin
+      .from("students")
+      .select("*", { count: "exact", head: true })
+      .eq("school_id", data.id);
+
+    // Fetch staff count (exclude system_admin)
+    const { data: staffData } = await admin
+      .from("profiles")
+      .select("id, school_id")
+      .eq("school_id", data.id);
+
+    const { data: rolesData } = await admin
+      .from("user_roles")
+      .select("user_id, role");
+
+    const roles = new Map<string, string[]>();
+    (rolesData ?? []).forEach((r) => roles.set(r.user_id, [...(roles.get(r.user_id) ?? []), r.role]));
+
+    const staffCount = (staffData ?? []).filter(s => !roles.get(s.id)?.includes("system_admin")).length;
+
+    // Fetch last activity (most recent conduct entry)
+    const { data: lastLog } = await admin
+      .from("conduct_logs")
+      .select("created_at")
+      .eq("school_id", data.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Fetch entries this term
+    const { data: activeTerm } = await admin
+      .from("academic_terms")
+      .select("id")
+      .eq("school_id", data.id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    let entriesThisTerm = 0;
+    if (activeTerm) {
+      const { count } = await admin
+        .from("conduct_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("school_id", data.id)
+        .eq("term_id", activeTerm.id);
+      entriesThisTerm = count ?? 0;
+    }
+
+    return {
+      ...school,
+      student_count: studentCount ?? 0,
+      staff_count: staffCount,
+      last_activity: lastLog?.created_at ?? null,
+      entries_this_term: entriesThisTerm,
+    };
+  });
+
 export const createSchool = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: { name: string; plan: Plan; trial_ends_at: string | null; student_limit: number | null }) => {
@@ -617,4 +693,150 @@ export const createAccountWithoutEmail = createServerFn({ method: "POST" })
     });
 
     return { user_id: newUserId, password: tempPassword };
+  });
+
+// =============================================================================
+// School Payments Management
+// =============================================================================
+
+export const recordSchoolPayment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    school_id: string;
+    payment_date: string;
+    amount: number;
+    method: string;
+    reference?: string;
+    period_covered?: string;
+    note?: string;
+  }) => {
+    if (!UUID.test(d.school_id)) throw new Error("Invalid school ID.");
+    if (!d.payment_date) throw new Error("Payment date is required.");
+    if (!d.amount || d.amount <= 0) throw new Error("Amount must be greater than 0.");
+    if (!["MTN MoMo", "Airtel Money", "Bank", "Cash"].includes(d.method)) {
+      throw new Error("Invalid payment method.");
+    }
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+    const userId = (context as { userId: string }).userId;
+
+    const { data: payment, error } = await admin
+      .from("school_payments")
+      .insert({
+        school_id: data.school_id,
+        payment_date: data.payment_date,
+        amount: data.amount,
+        method: data.method,
+        reference: data.reference || null,
+        period_covered: data.period_covered || null,
+        note: data.note || null,
+        recorded_by: userId,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return payment;
+  });
+
+export const getSchoolPayments = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { school_id: string }) => {
+    if (!UUID.test(d.school_id)) throw new Error("Invalid school ID.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+
+    const { data: payments, error } = await admin
+      .from("school_payments")
+      .select("*")
+      .eq("school_id", data.school_id)
+      .order("payment_date", { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    return payments ?? [];
+  });
+
+// =============================================================================
+// School Support Notes Management
+// =============================================================================
+
+export const createSupportNote = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: {
+    school_id: string;
+    subject: string;
+    status: "open" | "resolved";
+    note: string;
+  }) => {
+    if (!UUID.test(d.school_id)) throw new Error("Invalid school ID.");
+    if (!d.subject?.trim()) throw new Error("Subject is required.");
+    if (!d.note?.trim()) throw new Error("Note is required.");
+    if (!["open", "resolved"].includes(d.status)) throw new Error("Invalid status.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+    const userId = (context as { userId: string }).userId;
+
+    const { data: note, error } = await admin
+      .from("school_support_notes")
+      .insert({
+        school_id: data.school_id,
+        subject: data.subject.trim(),
+        status: data.status,
+        note: data.note.trim(),
+        created_by: userId,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return note;
+  });
+
+export const getSchoolSupportNotes = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { school_id: string }) => {
+    if (!UUID.test(d.school_id)) throw new Error("Invalid school ID.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+
+    const { data: notes, error } = await admin
+      .from("school_support_notes")
+      .select("*")
+      .eq("school_id", data.school_id)
+      .order("created_at", { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    return notes ?? [];
+  });
+
+export const updateSupportNoteStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string; status: "open" | "resolved" }) => {
+    if (!UUID.test(d.id)) throw new Error("Invalid note ID.");
+    if (!["open", "resolved"].includes(d.status)) throw new Error("Invalid status.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const admin = await adminFor(context as never);
+
+    const { error } = await admin
+      .from("school_support_notes")
+      .update({ status: data.status })
+      .eq("id", data.id);
+
+    if (error) throw new Error(error.message);
+
+    return { ok: true };
   });

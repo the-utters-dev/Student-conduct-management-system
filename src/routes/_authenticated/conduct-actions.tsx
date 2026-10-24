@@ -972,11 +972,29 @@ function ConductActionsPage() {
                     <option value="">
                       {entryType === "deduction" ? "Select an offense" : "None (restoration)"}
                     </option>
-                    {(offensesQuery.data ?? []).map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.code} · {o.title} ({o.marks_deducted})
-                      </option>
-                    ))}
+                    {(() => {
+                      const offences = offensesQuery.data ?? [];
+                      const grouped = offences.reduce((acc, o) => {
+                        const cat = o.category || "Uncategorized";
+                        if (!acc[cat]) acc[cat] = [];
+                        acc[cat].push(o);
+                        return acc;
+                      }, {} as Record<string, Offense[]>);
+
+                      return Object.entries(grouped)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([category, offs]) => (
+                          <optgroup key={category} label={category}>
+                            {offs
+                              .sort((a, b) => a.code.localeCompare(b.code))
+                              .map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.code} · {o.title} ({o.marks_deducted})
+                                </option>
+                              ))}
+                          </optgroup>
+                        ));
+                    })()}
                   </select>
                 </div>
               )}
