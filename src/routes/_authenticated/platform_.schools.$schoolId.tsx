@@ -17,7 +17,7 @@ import {
   type SchoolStatus,
 } from "@/lib/platform.functions";
 
-export const Route = createFileRoute("/_authenticated/platform/schools/$schoolId")({
+export const Route = createFileRoute("/_authenticated/platform_/schools/$schoolId")({
   component: SchoolDetailPage,
 });
 

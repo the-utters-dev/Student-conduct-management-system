@@ -21,7 +21,7 @@ import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedStudentsRouteImport } from './routes/_authenticated/students'
 import { Route as AuthenticatedCertificateEntryIdRouteImport } from './routes/_authenticated/certificate.$entryId'
-import { Route as AuthenticatedPlatformSchoolsSchoolIdRouteImport } from './routes/_authenticated/platform.schools.$schoolId'
+import { Route as AuthenticatedPlatformSchoolsSchoolIdRouteImport } from './routes/_authenticated/platform_.schools.$schoolId'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -86,9 +86,9 @@ const AuthenticatedCertificateEntryIdRoute =
   } as any)
 const AuthenticatedPlatformSchoolsSchoolIdRoute =
   AuthenticatedPlatformSchoolsSchoolIdRouteImport.update({
-    id: '/schools/$schoolId',
-    path: '/schools/$schoolId',
-    getParentRoute: () => AuthenticatedPlatformRoute,
+    id: '/platform_/schools/$schoolId',
+    path: '/platform/schools/$schoolId',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -98,7 +98,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/audit-logs': typeof AuthenticatedAuditLogsRoute
   '/conduct-actions': typeof AuthenticatedConductActionsRoute
-  '/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/platform': typeof AuthenticatedPlatformRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/students': typeof AuthenticatedStudentsRoute
@@ -111,7 +111,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/audit-logs': typeof AuthenticatedAuditLogsRoute
   '/conduct-actions': typeof AuthenticatedConductActionsRoute
-  '/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/platform': typeof AuthenticatedPlatformRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/students': typeof AuthenticatedStudentsRoute
@@ -127,13 +127,13 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/_authenticated/audit-logs': typeof AuthenticatedAuditLogsRoute
   '/_authenticated/conduct-actions': typeof AuthenticatedConductActionsRoute
-  '/_authenticated/platform': typeof AuthenticatedPlatformRouteWithChildren
+  '/_authenticated/platform': typeof AuthenticatedPlatformRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/students': typeof AuthenticatedStudentsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/certificate/$entryId': typeof AuthenticatedCertificateEntryIdRoute
-  '/_authenticated/platform/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
+  '/_authenticated/platform_/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -178,7 +178,7 @@ export interface FileRouteTypes {
     | '/_authenticated/students'
     | '/_authenticated/'
     | '/_authenticated/certificate/$entryId'
-    | '/_authenticated/platform/schools/$schoolId'
+    | '/_authenticated/platform_/schools/$schoolId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -274,50 +274,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCertificateEntryIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/platform/schools/$schoolId': {
-      id: '/_authenticated/platform/schools/$schoolId'
-      path: '/schools/$schoolId'
+    '/_authenticated/platform_/schools/$schoolId': {
+      id: '/_authenticated/platform_/schools/$schoolId'
+      path: '/platform/schools/$schoolId'
       fullPath: '/platform/schools/$schoolId'
       preLoaderRoute: typeof AuthenticatedPlatformSchoolsSchoolIdRouteImport
-      parentRoute: typeof AuthenticatedPlatformRoute
+      parentRoute: typeof AuthenticatedRouteRoute
     }
   }
 }
 
-interface AuthenticatedPlatformRouteChildren {
-  AuthenticatedPlatformSchoolsSchoolIdRoute: typeof AuthenticatedPlatformSchoolsSchoolIdRoute
-}
-
-const AuthenticatedPlatformRouteChildren: AuthenticatedPlatformRouteChildren = {
-  AuthenticatedPlatformSchoolsSchoolIdRoute:
-    AuthenticatedPlatformSchoolsSchoolIdRoute,
-}
-
-const AuthenticatedPlatformRouteWithChildren =
-  AuthenticatedPlatformRoute._addFileChildren(
-    AuthenticatedPlatformRouteChildren,
-  )
-
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditLogsRoute: typeof AuthenticatedAuditLogsRoute
   AuthenticatedConductActionsRoute: typeof AuthenticatedConductActionsRoute
-  AuthenticatedPlatformRoute: typeof AuthenticatedPlatformRouteWithChildren
+  AuthenticatedPlatformRoute: typeof AuthenticatedPlatformRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStudentsRoute: typeof AuthenticatedStudentsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedCertificateEntryIdRoute: typeof AuthenticatedCertificateEntryIdRoute
+  AuthenticatedPlatformSchoolsSchoolIdRoute: typeof AuthenticatedPlatformSchoolsSchoolIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAuditLogsRoute: AuthenticatedAuditLogsRoute,
   AuthenticatedConductActionsRoute: AuthenticatedConductActionsRoute,
-  AuthenticatedPlatformRoute: AuthenticatedPlatformRouteWithChildren,
+  AuthenticatedPlatformRoute: AuthenticatedPlatformRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStudentsRoute: AuthenticatedStudentsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedCertificateEntryIdRoute: AuthenticatedCertificateEntryIdRoute,
+  AuthenticatedPlatformSchoolsSchoolIdRoute:
+    AuthenticatedPlatformSchoolsSchoolIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

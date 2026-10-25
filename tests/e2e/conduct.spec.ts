@@ -324,19 +324,17 @@ test.describe('Conduct Actions - Bug Reproduction', () => {
         // Should be on the school detail page
         expect(page.url()).toContain('/platform/schools/');
 
-        // Check that the tabs are visible
-        await expect(page.locator('text=Overview').or(page.locator('[role="tab"]:has-text("Overview")'))).toBeVisible({ timeout: 5000 });
+        // CRITICAL: Assert the school DETAIL CONTENT is visible, not just the URL
+        // The school name should appear as the page heading (greeting in DashboardShell)
+        await expect(page.locator('h1, h2').filter({ hasText: schoolName?.trim() || '' })).toBeVisible({ timeout: 5000 });
 
-        // Try clicking each tab
-        const tabs = ['Overview', 'Staff', 'Subscription', 'Support'];
-        for (const tabName of tabs) {
-          const tab = page.locator(`[role="tab"]:has-text("${tabName}")`).or(page.locator(`button:has-text("${tabName}")`));
-          if (await tab.count() > 0) {
-            await tab.click();
-            await page.waitForTimeout(500);
-            console.log(`${tabName} tab clicked successfully`);
-          }
-        }
+        // All four tabs should be visible
+        await expect(page.locator('[role="tab"]:has-text("Overview")')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[role="tab"]:has-text("Staff")')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[role="tab"]:has-text("Subscription & Payments")')).toBeVisible({ timeout: 5000 });
+        await expect(page.locator('[role="tab"]:has-text("Support")')).toBeVisible({ timeout: 5000 });
+
+        console.log(`School detail page fully loaded with heading "${schoolName}" and all four tabs visible`);
       } else {
         console.log('No schools found in the table');
         test.skip();
