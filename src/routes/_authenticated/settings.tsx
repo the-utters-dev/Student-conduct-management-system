@@ -10,6 +10,9 @@ import { useAuth, type AppRole, type PermissionKey } from "@/hooks/useAuth";
 import { useSchoolSettings, DEFAULT_SETTINGS, type SchoolSettings } from "@/hooks/useSchoolSettings";
 import { ACCENTS, useTheme, type AccentKey } from "@/hooks/useTheme";
 import { fileToResizedDataUrl, convertToJpeg } from "@/lib/image";
+import { removeWhiteBackground, fileToDataUrl } from "@/lib/image-transparency";
+import { SignaturePad } from "@/components/SignaturePad";
+import { uploadCertificateBranding, getCertificateBrandingUrl } from "@/lib/certificate.functions";
 import {
   listSchoolStaff,
   inviteSchoolStaff,
@@ -64,6 +67,7 @@ function SettingsPage() {
           {showCalendar && <TabsTrigger value="calendar">Academic Calendar</TabsTrigger>}
           {showOffences && <TabsTrigger value="offences">Offences</TabsTrigger>}
           {showCategories && <TabsTrigger value="categories">Good Deed Categories</TabsTrigger>}
+          {isSchoolDirector && <TabsTrigger value="certificates">Certificates</TabsTrigger>}
           {isSchoolDirector && <TabsTrigger value="staff">Staff & Roles</TabsTrigger>}
         </TabsList>
         <TabsContent value="profile"><ProfileTab /></TabsContent>
@@ -72,6 +76,7 @@ function SettingsPage() {
         {showCalendar && <TabsContent value="calendar"><CalendarTab /></TabsContent>}
         {showOffences && <TabsContent value="offences"><OffencesTab /></TabsContent>}
         {showCategories && <TabsContent value="categories"><CategoriesTab /></TabsContent>}
+        {isSchoolDirector && <TabsContent value="certificates"><CertificatesTab /></TabsContent>}
         {isSchoolDirector && <TabsContent value="staff"><StaffTab /></TabsContent>}
       </Tabs>
     </DashboardShell>
@@ -1549,6 +1554,334 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
 };
 
 const PERMISSION_ROLES: SchoolRole[] = ["master_of_discipline", "matron", "patron"];
+
+function CertificatesTab() {
+  const { schoolId, profile } = useAuth();
+  const { data: settings } = useSchoolSettings();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  // Signature mode: "draw" or "upload"
+  const [signatureMode, setSignatureMode] = useState<"draw" | "upload">("draw");
+  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [stampPreview, setStampPreview] = useState<string | null>(null);
+
+  // Form fields
+  const [directorName, setDirectorName] = useState("");
+  const [directorTitle, setDirectorTitle] = useState("School Director");
+
+  // Background removal
+  const [removeWhiteBg, setRemoveWhiteBg] = useState(true);
+  const [threshold, setThreshold] = useState(240);
+  const [uploadedSignatureRaw, setUploadedSignatureRaw] = useState<string | null>(null);
+  const [uploadedStampRaw, setUploadedStampRaw] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDirectorName(settings?.director_name ?? profile?.full_name ?? "");
+    setDirectorTitle(settings?.director_title ?? "School Director");
+  }, [settings, profile]);
+
+  // Load existing signature and stamp
+  useEffect(() => {
+    async function loadBranding() {
+      if (settings?.signature_path) {
+        try {
+          const result = await getCertificateBrandingUrl({ data: { path: settings.signature_path } } as never);
+          setSignaturePreview(result.url);
+        } catch (e) {
+          console.error("Failed to load signature", e);
+        }
+      }
+      if (settings?.stamp_path) {
+        try {
+          const result = await getCertificateBrandingUrl({ data: { path: settings.stamp_path } } as never);
+          setStampPreview(result.url);
+        } catch (e) {
+          console.error("Failed to load stamp", e);
+        }
+      }
+    }
+    void loadBranding();
+  }, [settings]);
+
+  // Process uploaded signature with background removal
+  useEffect(() => {
+    if (!uploadedSignatureRaw || !removeWhiteBg) {
+      if (uploadedSignatureRaw && !removeWhiteBg) {
+        setSignaturePreview(uploadedSignatureRaw);
+      }
+      return;
+    }
+
+    void removeWhiteBackground(uploadedSignatureRaw, threshold).then(setSignaturePreview);
+  }, [uploadedSignatureRaw, removeWhiteBg, threshold]);
+
+  // Process uploaded stamp with background removal
+  useEffect(() => {
+    if (!uploadedStampRaw || !removeWhiteBg) {
+      if (uploadedStampRaw && !removeWhiteBg) {
+        setStampPreview(uploadedStampRaw);
+      }
+      return;
+    }
+
+    void removeWhiteBackground(uploadedStampRaw, threshold).then(setStampPreview);
+  }, [uploadedStampRaw, removeWhiteBg, threshold]);
+
+  async function handleSignatureSave(dataUrl: string) {
+    // If drawn, process to remove white background
+    const processed = removeWhiteBg ? await removeWhiteBackground(dataUrl, threshold) : dataUrl;
+    setSignaturePreview(processed);
+  }
+
+  async function handleSignatureUpload(file: File) {
+    const dataUrl = await fileToDataUrl(file);
+    setUploadedSignatureRaw(dataUrl);
+  }
+
+  async function handleStampUpload(file: File) {
+    const dataUrl = await fileToDataUrl(file);
+    setUploadedStampRaw(dataUrl);
+  }
+
+  async function saveSignature() {
+    if (!signaturePreview) {
+      toast.error("Please draw or upload a signature first.");
+      return;
+    }
+    if (!directorName.trim()) {
+      toast.error("Director name is required.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await uploadCertificateBranding({
+        data: {
+          type: "signature",
+          file_data: signaturePreview,
+          file_name: "signature.png",
+          director_name: directorName.trim(),
+          director_title: directorTitle.trim(),
+        },
+      } as never);
+      toast.success("Signature saved successfully");
+      void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
+      setUploadedSignatureRaw(null);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveStamp() {
+    if (!stampPreview) {
+      toast.error("Please upload a stamp first.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await uploadCertificateBranding({
+        data: {
+          type: "stamp",
+          file_data: stampPreview,
+          file_name: "stamp.png",
+        },
+      } as never);
+      toast.success("Stamp saved successfully");
+      void qc.invalidateQueries({ queryKey: ["school-settings", schoolId] });
+      setUploadedStampRaw(null);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const lastUpdated = settings?.signature_updated_at
+    ? new Date(settings.signature_updated_at).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+  return (
+    <div className="space-y-6">
+      {/* Signature Section */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Director Signature</h3>
+        <p className="mt-1 text-sm text-soft">
+          This signature will appear on all certificates. Draw it with your finger/stylus/mouse or upload a photo.
+        </p>
+
+        {lastUpdated && (
+          <p className="mt-2 text-xs text-faint">
+            Signature last updated on {lastUpdated}
+          </p>
+        )}
+
+        <div className="mt-4 space-y-4">
+          {/* Director info */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-semibold text-soft">
+              Director Name
+              <input
+                type="text"
+                className={`${inp} mt-1`}
+                value={directorName}
+                onChange={(e) => setDirectorName(e.target.value)}
+                placeholder="Full name"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-soft">
+              Director Title
+              <input
+                type="text"
+                className={`${inp} mt-1`}
+                value={directorTitle}
+                onChange={(e) => setDirectorTitle(e.target.value)}
+                placeholder="School Director"
+              />
+            </label>
+          </div>
+
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSignatureMode("draw")}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${
+                signatureMode === "draw" ? "bg-brand text-on-brand ring-brand" : "text-body ring-hairline"
+              }`}
+            >
+              Draw signature
+            </button>
+            <button
+              type="button"
+              onClick={() => setSignatureMode("upload")}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${
+                signatureMode === "upload" ? "bg-brand text-on-brand ring-brand" : "text-body ring-hairline"
+              }`}
+            >
+              Upload photo
+            </button>
+          </div>
+
+          {/* Draw mode */}
+          {signatureMode === "draw" && (
+            <SignaturePad
+              onSave={handleSignatureSave}
+              onClear={() => setSignaturePreview(null)}
+              width={800}
+              height={200}
+            />
+          )}
+
+          {/* Upload mode */}
+          {signatureMode === "upload" && (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-sm font-semibold text-soft">Upload signature image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="mt-2 block w-full text-sm text-soft file:mr-4 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-semibold file:text-on-brand"
+                  onChange={(e) => e.target.files?.[0] && handleSignatureUpload(e.target.files[0])}
+                />
+              </label>
+            </div>
+          )}
+
+          {/* Background removal controls */}
+          <div className="space-y-3 rounded-xl bg-glass-bright p-4">
+            <label className="flex items-center gap-2 text-sm text-body">
+              <input
+                type="checkbox"
+                checked={removeWhiteBg}
+                onChange={(e) => setRemoveWhiteBg(e.target.checked)}
+              />
+              Remove white background (make transparent)
+            </label>
+            {removeWhiteBg && (
+              <label className="block text-xs font-semibold text-soft">
+                Background removal threshold (240 = near white)
+                <input
+                  type="range"
+                  min="200"
+                  max="255"
+                  step="5"
+                  value={threshold}
+                  onChange={(e) => setThreshold(Number(e.target.value))}
+                  className="mt-2 w-full"
+                />
+                <span className="text-xs text-faint">Current: {threshold}</span>
+              </label>
+            )}
+          </div>
+
+          {/* Preview */}
+          {signaturePreview && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-soft">Live preview:</p>
+              <div className="rounded-xl border-2 border-glass-line bg-glass-bright p-4">
+                <img
+                  src={signaturePreview}
+                  alt="Signature preview"
+                  className="h-auto max-h-32 w-auto max-w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          <button onClick={saveSignature} disabled={busy || !signaturePreview} className={btn}>
+            {busy ? "Saving..." : "Save Signature"}
+          </button>
+        </div>
+      </div>
+
+      {/* Stamp Section */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">School Stamp</h3>
+        <p className="mt-1 text-sm text-soft">
+          Upload a photo or scan of your school's official stamp. It will appear semi-transparent on certificates.
+        </p>
+
+        <div className="mt-4 space-y-4">
+          <label className="block">
+            <span className="text-sm font-semibold text-soft">Upload stamp image</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="mt-2 block w-full text-sm text-soft file:mr-4 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-semibold file:text-on-brand"
+              onChange={(e) => e.target.files?.[0] && handleStampUpload(e.target.files[0])}
+            />
+          </label>
+
+          {/* Preview */}
+          {stampPreview && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-soft">Live preview:</p>
+              <div className="rounded-xl border-2 border-glass-line bg-glass-bright p-4">
+                <img
+                  src={stampPreview}
+                  alt="Stamp preview"
+                  className="h-auto max-h-32 w-auto max-w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          <button onClick={saveStamp} disabled={busy || !stampPreview} className={btn}>
+            {busy ? "Saving..." : "Save Stamp"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StaffTab() {
   const { schoolId, roleLabel } = useAuth();

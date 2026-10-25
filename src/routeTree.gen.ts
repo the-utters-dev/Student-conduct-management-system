@@ -20,6 +20,7 @@ import { Route as AuthenticatedPlatformRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedStudentsRouteImport } from './routes/_authenticated/students'
+import { Route as VerifyCodeRouteImport } from './routes/verify.$code'
 import { Route as AuthenticatedCertificateEntryIdRouteImport } from './routes/_authenticated/certificate.$entryId'
 import { Route as AuthenticatedPlatformSchoolsSchoolIdRouteImport } from './routes/_authenticated/platform_.schools.$schoolId'
 
@@ -78,6 +79,11 @@ const AuthenticatedStudentsRoute = AuthenticatedStudentsRouteImport.update({
   path: '/students',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const VerifyCodeRoute = VerifyCodeRouteImport.update({
+  id: '/verify/$code',
+  path: '/verify/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedCertificateEntryIdRoute =
   AuthenticatedCertificateEntryIdRouteImport.update({
     id: '/certificate/$entryId',
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/students': typeof AuthenticatedStudentsRoute
+  '/verify/$code': typeof VerifyCodeRoute
   '/certificate/$entryId': typeof AuthenticatedCertificateEntryIdRoute
   '/platform/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
 }
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/students': typeof AuthenticatedStudentsRoute
+  '/verify/$code': typeof VerifyCodeRoute
   '/': typeof AuthenticatedIndexRoute
   '/certificate/$entryId': typeof AuthenticatedCertificateEntryIdRoute
   '/platform/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/students': typeof AuthenticatedStudentsRoute
+  '/verify/$code': typeof VerifyCodeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/certificate/$entryId': typeof AuthenticatedCertificateEntryIdRoute
   '/_authenticated/platform_/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/students'
+    | '/verify/$code'
     | '/certificate/$entryId'
     | '/platform/schools/$schoolId'
   fileRoutesByTo: FileRoutesByTo
@@ -161,6 +171,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/students'
+    | '/verify/$code'
     | '/'
     | '/certificate/$entryId'
     | '/platform/schools/$schoolId'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/students'
+    | '/verify/$code'
     | '/_authenticated/'
     | '/_authenticated/certificate/$entryId'
     | '/_authenticated/platform_/schools/$schoolId'
@@ -186,6 +198,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   ChangePasswordRoute: typeof ChangePasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  VerifyCodeRoute: typeof VerifyCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -267,6 +280,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStudentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/verify/$code': {
+      id: '/verify/$code'
+      path: '/verify/$code'
+      fullPath: '/verify/$code'
+      preLoaderRoute: typeof VerifyCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/certificate/$entryId': {
       id: '/_authenticated/certificate/$entryId'
       path: '/certificate/$entryId'
@@ -317,6 +337,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   ChangePasswordRoute: ChangePasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  VerifyCodeRoute: VerifyCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

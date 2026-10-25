@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { DashboardShell } from "@/components/DashboardShell";
+import { QRCode } from "@/components/QRCode";
+import { getCertificateBrandingUrl } from "@/lib/certificate.functions";
 
 export const Route = createFileRoute("/_authenticated/certificate/$entryId")({
   component: CertificatePage,
@@ -75,6 +77,31 @@ function CertificatePage() {
     year: "numeric",
   });
 
+  // Load signature and stamp if available
+  const { data: signatureUrl } = useQuery({
+    queryKey: ["signature-url", school?.signature_path],
+    queryFn: async () => {
+      if (!school?.signature_path) return null;
+      const result = await getCertificateBrandingUrl({ data: { path: school.signature_path } } as never);
+      return result.url;
+    },
+    enabled: !!school?.signature_path,
+  });
+
+  const { data: stampUrl } = useQuery({
+    queryKey: ["stamp-url", school?.stamp_path],
+    queryFn: async () => {
+      if (!school?.stamp_path) return null;
+      const result = await getCertificateBrandingUrl({ data: { path: school.stamp_path } } as never);
+      return result.url;
+    },
+    enabled: !!school?.stamp_path,
+  });
+
+  // Generate a placeholder verification code for this certificate
+  // In production, this would come from issued_certificates table
+  const verificationCode = `GD-${entry.id.substring(0, 8).toUpperCase()}`;
+
   return (
     <>
       <style>{`
@@ -139,6 +166,11 @@ function CertificatePage() {
                 categoryName={categoryName}
                 date={date}
                 reason={entry.reason}
+                directorName={school?.director_name}
+                directorTitle={school?.director_title}
+                signatureUrl={signatureUrl}
+                stampUrl={stampUrl}
+                verificationCode={verificationCode}
               />
             </div>
           </div>
@@ -155,6 +187,11 @@ function CertificatePage() {
             categoryName={categoryName}
             date={date}
             reason={entry.reason}
+            directorName={school?.director_name}
+            directorTitle={school?.director_title}
+            signatureUrl={signatureUrl}
+            stampUrl={stampUrl}
+            verificationCode={verificationCode}
           />
         </div>
       </div>
@@ -170,6 +207,11 @@ function CertificateContent({
   categoryName,
   date,
   reason,
+  directorName,
+  directorTitle,
+  signatureUrl,
+  stampUrl,
+  verificationCode,
 }: {
   schoolName: string;
   logoUrl: string | null | undefined;
@@ -178,6 +220,11 @@ function CertificateContent({
   categoryName: string;
   date: string;
   reason: string | null;
+  directorName?: string | null | undefined;
+  directorTitle?: string | null | undefined;
+  signatureUrl?: string | null | undefined;
+  stampUrl?: string | null | undefined;
+  verificationCode?: string | undefined;
 }) {
   return (
     <div className="flex flex-col items-center text-center">
@@ -234,16 +281,53 @@ function CertificateContent({
         </p>
       </div>
 
-      {/* Signature line */}
-      <div className="mt-12 flex w-full max-w-md flex-col items-center">
-        <div className="h-px w-full bg-ink/30"></div>
-        <p className="mt-2 text-sm font-semibold text-ink">School Director</p>
-        <p className="text-xs text-soft">{schoolName}</p>
+      {/* Signature and Stamp */}
+      <div className="mt-12 flex w-full max-w-lg items-end justify-between">
+        {/* Signature section */}
+        <div className="relative flex flex-col items-center">
+          {signatureUrl ? (
+            <div className="relative">
+              <img
+                src={signatureUrl}
+                alt="Director signature"
+                className="h-auto w-48 max-w-full object-contain"
+              />
+              {/* Stamp overlapping signature */}
+              {stampUrl && (
+                <img
+                  src={stampUrl}
+                  alt="School stamp"
+                  className="absolute bottom-0 right-0 h-20 w-20 translate-x-4 translate-y-2 object-contain opacity-70"
+                />
+              )}
+            </div>
+          ) : (
+            <div className="h-16 w-48 border-b border-ink/30" />
+          )}
+          <p className="mt-2 text-sm font-semibold text-ink">
+            {directorName ?? "School Director"}
+          </p>
+          <p className="text-xs text-soft">{directorTitle ?? "School Director"}</p>
+          <p className="text-xs text-soft">{schoolName}</p>
+        </div>
+
+        {/* QR Code and Serial (if verification code exists) */}
+        {verificationCode && (
+          <div className="flex flex-col items-center gap-2">
+            <QRCode value={`${window.location.origin}/verify/${verificationCode}`} size={80} />
+            <p className="text-xs font-mono text-faint">{verificationCode}</p>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
       <div className="mt-8 text-xs text-faint">
         Generated by SCDMS · {new Date().toLocaleDateString("en-GB")}
+        {verificationCode && (
+          <span className="ml-2">
+            · Verify at {window.location.host}/verify/{verificationCode}
+          </span>
+        )}
       </div>
     </div>
   );

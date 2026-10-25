@@ -16,6 +16,12 @@ export interface SchoolSettings {
   role_titles?: Record<string, string>;
   permissions?: Record<string, Record<PermissionKey, boolean>>;
   good_deed_reward_type?: "recognition" | "merit_points";
+  signature_path?: string | null;
+  stamp_path?: string | null;
+  director_name?: string | null;
+  director_title?: string | null;
+  signature_updated_at?: string | null;
+  signature_updated_by?: string | null;
 }
 
 export const DEFAULT_SETTINGS: SchoolSettings = {
