@@ -168,6 +168,19 @@ $$;
 
 COMMENT ON FUNCTION public.has_permission IS 'Check if a user has a specific permission based on their role and school settings';
 
+-- Automatically update updated_at timestamp on row updates
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.set_updated_at IS 'Automatically update updated_at timestamp on row updates';
+
 -- Generic audit_log trigger function
 CREATE OR REPLACE FUNCTION public.audit_log()
 RETURNS trigger

@@ -3,6 +3,24 @@
 -- Creates school_payments and school_support_notes tables for platform owner only
 
 -- =============================================================================
+-- 0. HELPER FUNCTION: set_updated_at()
+-- =============================================================================
+-- This function automatically updates the updated_at timestamp on row updates
+-- It is used by triggers on tables with updated_at columns
+
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.set_updated_at IS 'Automatically update updated_at timestamp on row updates';
+
+-- =============================================================================
 -- 1. CREATE school_payments TABLE
 -- =============================================================================
 

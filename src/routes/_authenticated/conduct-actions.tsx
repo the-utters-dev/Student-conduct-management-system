@@ -119,11 +119,9 @@ function ConductActionsPage() {
     if (selectionMode === "whole_school") {
       setNotifyParent(false);
     } else if (selectionMode === "one" || selectionMode === "several" || selectionMode === "whole_level") {
-      if (!notifyParent) {
-        setNotifyParent(true);
-      }
+      setNotifyParent(true);
     }
-  }, [selectionMode, notifyParent]);
+  }, [selectionMode]);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [evidenceKey, setEvidenceKey] = useState(0);
   const [composer, setComposer] = useState<ComposerEntry | null>(null);
@@ -328,7 +326,11 @@ function ConductActionsPage() {
   const termId = termQuery.data?.id ?? balanceQuery.data?.term_id ?? null;
   const canSubmit = selectionMode === "one"
     ? Boolean(studentId && termId && validMarks && isDisciplineStaff)
-    : Boolean(selectedStudentIds.size > 0 && termId && validMarks && isDisciplineStaff);
+    : selectionMode === "whole_school"
+      ? Boolean(matchingStudents.length > 0 && termId && validMarks && isDisciplineStaff)
+      : selectionMode === "whole_level"
+        ? Boolean(selectedClassLevel && matchingStudents.length > 0 && termId && validMarks && isDisciplineStaff)
+        : Boolean(selectedStudentIds.size > 0 && termId && validMarks && isDisciplineStaff);
 
   const submit = useMutation({
     mutationFn: async () => {
