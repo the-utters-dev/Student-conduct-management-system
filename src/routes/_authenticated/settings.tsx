@@ -1581,52 +1581,223 @@ function CertificatesTab() {
     setDirectorTitle(settings?.director_title ?? "School Director");
   }, [settings, profile]);
 
-  // Load existing signature and stamp
-  useEffect(() => {
-    async function loadBranding() {
-      if (settings?.signature_path) {
-        try {
-          const result = await getCertificateBrandingUrl({ data: { path: settings.signature_path } } as never);
-          setSignaturePreview(result.url);
-        } catch (e) {
-          console.error("Failed to load signature", e);
-        }
-      }
-      if (settings?.stamp_path) {
-        try {
-          const result = await getCertificateBrandingUrl({ data: { path: settings.stamp_path } } as never);
-          setStampPreview(result.url);
-        } catch (e) {
-          console.error("Failed to load stamp", e);
-        }
-      }
-    }
-    void loadBranding();
-  }, [settings]);
+  return (
+    <div className="space-y-6">
+      {/* Quick Links */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Certificate Management</h3>
+        <p className="mt-1 text-sm text-soft">
+          Manage certificate templates, issued certificates, and branding.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <a
+            href="/settings/certificates"
+            className="rounded-xl bg-glass-bright p-4 text-left ring-1 ring-hairline hover:ring-2 hover:ring-brand"
+          >
+            <h4 className="font-semibold text-ink">Templates & Register</h4>
+            <p className="mt-1 text-xs text-soft">
+              Create and edit certificate templates. View and revoke issued certificates.
+            </p>
+          </a>
+          <a
+            href="/certificates/bulk"
+            className="rounded-xl bg-glass-bright p-4 text-left ring-1 ring-hairline hover:ring-2 hover:ring-brand"
+          >
+            <h4 className="font-semibold text-ink">Bulk Certificates</h4>
+            <p className="mt-1 text-xs text-soft">
+              Issue certificates to multiple students at once (e.g., S6 graduation).
+            </p>
+          </a>
+        </div>
+      </div>
 
-  // Process uploaded signature with background removal
-  useEffect(() => {
-    if (!uploadedSignatureRaw || !removeWhiteBg) {
-      if (uploadedSignatureRaw && !removeWhiteBg) {
-        setSignaturePreview(uploadedSignatureRaw);
-      }
-      return;
-    }
+      {renderSignatureAndStampSections()}
+    </div>
+  );
 
-    void removeWhiteBackground(uploadedSignatureRaw, threshold).then(setSignaturePreview);
-  }, [uploadedSignatureRaw, removeWhiteBg, threshold]);
+  function renderSignatureAndStampSections() {
+    return (
+      <>
+        {/* Signature Section */}
+        <div className={panel}>
+          <h3 className="font-display text-lg font-bold text-ink">Director Signature</h3>
+          <p className="mt-1 text-sm text-soft">
+            This signature will appear on all certificates. Draw it with your finger/stylus/mouse or upload a photo.
+          </p>
 
-  // Process uploaded stamp with background removal
-  useEffect(() => {
-    if (!uploadedStampRaw || !removeWhiteBg) {
-      if (uploadedStampRaw && !removeWhiteBg) {
-        setStampPreview(uploadedStampRaw);
-      }
-      return;
-    }
+          {lastUpdated && (
+            <p className="mt-2 text-xs text-faint">
+              Signature last updated on {lastUpdated}
+            </p>
+          )}
 
-    void removeWhiteBackground(uploadedStampRaw, threshold).then(setStampPreview);
-  }, [uploadedStampRaw, removeWhiteBg, threshold]);
+          <div className="mt-4 space-y-4">
+            {/* Director info */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-semibold text-soft">
+                Director Name
+                <input
+                  type="text"
+                  className={`${inp} mt-1`}
+                  value={directorName}
+                  onChange={(e) => setDirectorName(e.target.value)}
+                  placeholder="Full name"
+                />
+              </label>
+              <label className="block text-xs font-semibold text-soft">
+                Director Title
+                <input
+                  type="text"
+                  className={`${inp} mt-1`}
+                  value={directorTitle}
+                  onChange={(e) => setDirectorTitle(e.target.value)}
+                  placeholder="School Director"
+                />
+              </label>
+            </div>
+
+            {/* Mode toggle */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSignatureMode("draw")}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${
+                  signatureMode === "draw" ? "bg-brand text-on-brand ring-brand" : "text-body ring-hairline"
+                }`}
+              >
+                Draw signature
+              </button>
+              <button
+                type="button"
+                onClick={() => setSignatureMode("upload")}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${
+                  signatureMode === "upload" ? "bg-brand text-on-brand ring-brand" : "text-body ring-hairline"
+                }`}
+              >
+                Upload photo
+              </button>
+            </div>
+
+            {/* Draw mode */}
+            {signatureMode === "draw" && (
+              <SignaturePad
+                onSave={handleSignatureSave}
+                onClear={() => setSignaturePreview(null)}
+                width={800}
+                height={200}
+              />
+            )}
+
+            {/* Upload mode */}
+            {signatureMode === "upload" && (
+              <div className="space-y-3">
+                <label className="block">
+                  <span className="text-sm font-semibold text-soft">Upload signature image</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="mt-2 block w-full text-sm text-soft file:mr-4 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-semibold file:text-on-brand"
+                    onChange={(e) => e.target.files?.[0] && handleSignatureUpload(e.target.files[0])}
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* Background removal controls */}
+            <div className="space-y-3 rounded-xl bg-glass-bright p-4">
+              <label className="flex items-center gap-2 text-sm text-body">
+                <input
+                  type="checkbox"
+                  checked={removeWhiteBg}
+                  onChange={(e) => setRemoveWhiteBg(e.target.checked)}
+                />
+                Remove white background (make transparent)
+              </label>
+              {removeWhiteBg && (
+                <label className="block text-xs font-semibold text-soft">
+                  Background removal threshold (240 = near white)
+                  <input
+                    type="range"
+                    min="200"
+                    max="255"
+                    step="5"
+                    value={threshold}
+                    onChange={(e) => setThreshold(Number(e.target.value))}
+                    className="mt-2 w-full"
+                  />
+                  <span className="text-xs text-faint">Current: {threshold}</span>
+                </label>
+              )}
+            </div>
+
+            {/* Preview */}
+            {signaturePreview && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-soft">Live preview:</p>
+                <div className="rounded-xl border-2 border-glass-line bg-glass-bright p-4">
+                  <img
+                    src={signaturePreview}
+                    alt="Signature preview"
+                    className="h-auto max-h-32 w-auto max-w-full"
+                  />
+                </div>
+              </div>
+            )}
+
+            <button onClick={saveSignature} disabled={busy || !signaturePreview} className={btn}>
+              {busy ? "Saving..." : "Save Signature"}
+            </button>
+          </div>
+        </div>
+
+        {/* Stamp Section */}
+        <div className={panel}>
+          <h3 className="font-display text-lg font-bold text-ink">School Stamp</h3>
+          <p className="mt-1 text-sm text-soft">
+            Upload a photo or scan of your school's official stamp. It will appear semi-transparent on certificates.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <label className="block">
+              <span className="text-sm font-semibold text-soft">Upload stamp image</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="mt-2 block w-full text-sm text-soft file:mr-4 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-semibold file:text-on-brand"
+                onChange={(e) => e.target.files?.[0] && handleStampUpload(e.target.files[0])}
+              />
+            </label>
+
+            {/* Preview */}
+            {stampPreview && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-soft">Live preview:</p>
+                <div className="rounded-xl border-2 border-glass-line bg-glass-bright p-4">
+                  <img
+                    src={stampPreview}
+                    alt="Stamp preview"
+                    className="h-auto max-h-32 w-auto max-w-full"
+                  />
+                </div>
+              </div>
+            )}
+
+            <button onClick={saveStamp} disabled={busy || !stampPreview} className={btn}>
+              {busy ? "Saving..." : "Save Stamp"}
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const lastUpdated = settings?.signature_updated_at
+    ? new Date(settings.signature_updated_at as string).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
 
   async function handleSignatureSave(dataUrl: string) {
     // If drawn, process to remove white background
@@ -1700,187 +1871,52 @@ function CertificatesTab() {
     }
   }
 
-  const lastUpdated = settings?.signature_updated_at
-    ? new Date(settings.signature_updated_at).toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : null;
+  // Load existing signature and stamp
+  useEffect(() => {
+    async function loadBranding() {
+      if (settings?.signature_path) {
+        try {
+          const result = await getCertificateBrandingUrl({ data: { path: settings.signature_path } } as never);
+          setSignaturePreview(result.url);
+        } catch (e) {
+          console.error("Failed to load signature", e);
+        }
+      }
+      if (settings?.stamp_path) {
+        try {
+          const result = await getCertificateBrandingUrl({ data: { path: settings.stamp_path } } as never);
+          setStampPreview(result.url);
+        } catch (e) {
+          console.error("Failed to load stamp", e);
+        }
+      }
+    }
+    void loadBranding();
+  }, [settings]);
 
-  return (
-    <div className="space-y-6">
-      {/* Signature Section */}
-      <div className={panel}>
-        <h3 className="font-display text-lg font-bold text-ink">Director Signature</h3>
-        <p className="mt-1 text-sm text-soft">
-          This signature will appear on all certificates. Draw it with your finger/stylus/mouse or upload a photo.
-        </p>
+  // Process uploaded signature with background removal
+  useEffect(() => {
+    if (!uploadedSignatureRaw || !removeWhiteBg) {
+      if (uploadedSignatureRaw && !removeWhiteBg) {
+        setSignaturePreview(uploadedSignatureRaw);
+      }
+      return;
+    }
 
-        {lastUpdated && (
-          <p className="mt-2 text-xs text-faint">
-            Signature last updated on {lastUpdated}
-          </p>
-        )}
+    void removeWhiteBackground(uploadedSignatureRaw, threshold).then(setSignaturePreview);
+  }, [uploadedSignatureRaw, removeWhiteBg, threshold]);
 
-        <div className="mt-4 space-y-4">
-          {/* Director info */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-xs font-semibold text-soft">
-              Director Name
-              <input
-                type="text"
-                className={`${inp} mt-1`}
-                value={directorName}
-                onChange={(e) => setDirectorName(e.target.value)}
-                placeholder="Full name"
-              />
-            </label>
-            <label className="block text-xs font-semibold text-soft">
-              Director Title
-              <input
-                type="text"
-                className={`${inp} mt-1`}
-                value={directorTitle}
-                onChange={(e) => setDirectorTitle(e.target.value)}
-                placeholder="School Director"
-              />
-            </label>
-          </div>
+  // Process uploaded stamp with background removal
+  useEffect(() => {
+    if (!uploadedStampRaw || !removeWhiteBg) {
+      if (uploadedStampRaw && !removeWhiteBg) {
+        setStampPreview(uploadedStampRaw);
+      }
+      return;
+    }
 
-          {/* Mode toggle */}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setSignatureMode("draw")}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${
-                signatureMode === "draw" ? "bg-brand text-on-brand ring-brand" : "text-body ring-hairline"
-              }`}
-            >
-              Draw signature
-            </button>
-            <button
-              type="button"
-              onClick={() => setSignatureMode("upload")}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ring-1 ${
-                signatureMode === "upload" ? "bg-brand text-on-brand ring-brand" : "text-body ring-hairline"
-              }`}
-            >
-              Upload photo
-            </button>
-          </div>
-
-          {/* Draw mode */}
-          {signatureMode === "draw" && (
-            <SignaturePad
-              onSave={handleSignatureSave}
-              onClear={() => setSignaturePreview(null)}
-              width={800}
-              height={200}
-            />
-          )}
-
-          {/* Upload mode */}
-          {signatureMode === "upload" && (
-            <div className="space-y-3">
-              <label className="block">
-                <span className="text-sm font-semibold text-soft">Upload signature image</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="mt-2 block w-full text-sm text-soft file:mr-4 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-semibold file:text-on-brand"
-                  onChange={(e) => e.target.files?.[0] && handleSignatureUpload(e.target.files[0])}
-                />
-              </label>
-            </div>
-          )}
-
-          {/* Background removal controls */}
-          <div className="space-y-3 rounded-xl bg-glass-bright p-4">
-            <label className="flex items-center gap-2 text-sm text-body">
-              <input
-                type="checkbox"
-                checked={removeWhiteBg}
-                onChange={(e) => setRemoveWhiteBg(e.target.checked)}
-              />
-              Remove white background (make transparent)
-            </label>
-            {removeWhiteBg && (
-              <label className="block text-xs font-semibold text-soft">
-                Background removal threshold (240 = near white)
-                <input
-                  type="range"
-                  min="200"
-                  max="255"
-                  step="5"
-                  value={threshold}
-                  onChange={(e) => setThreshold(Number(e.target.value))}
-                  className="mt-2 w-full"
-                />
-                <span className="text-xs text-faint">Current: {threshold}</span>
-              </label>
-            )}
-          </div>
-
-          {/* Preview */}
-          {signaturePreview && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-soft">Live preview:</p>
-              <div className="rounded-xl border-2 border-glass-line bg-glass-bright p-4">
-                <img
-                  src={signaturePreview}
-                  alt="Signature preview"
-                  className="h-auto max-h-32 w-auto max-w-full"
-                />
-              </div>
-            </div>
-          )}
-
-          <button onClick={saveSignature} disabled={busy || !signaturePreview} className={btn}>
-            {busy ? "Saving..." : "Save Signature"}
-          </button>
-        </div>
-      </div>
-
-      {/* Stamp Section */}
-      <div className={panel}>
-        <h3 className="font-display text-lg font-bold text-ink">School Stamp</h3>
-        <p className="mt-1 text-sm text-soft">
-          Upload a photo or scan of your school's official stamp. It will appear semi-transparent on certificates.
-        </p>
-
-        <div className="mt-4 space-y-4">
-          <label className="block">
-            <span className="text-sm font-semibold text-soft">Upload stamp image</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="mt-2 block w-full text-sm text-soft file:mr-4 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-semibold file:text-on-brand"
-              onChange={(e) => e.target.files?.[0] && handleStampUpload(e.target.files[0])}
-            />
-          </label>
-
-          {/* Preview */}
-          {stampPreview && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-soft">Live preview:</p>
-              <div className="rounded-xl border-2 border-glass-line bg-glass-bright p-4">
-                <img
-                  src={stampPreview}
-                  alt="Stamp preview"
-                  className="h-auto max-h-32 w-auto max-w-full"
-                />
-              </div>
-            </div>
-          )}
-
-          <button onClick={saveStamp} disabled={busy || !stampPreview} className={btn}>
-            {busy ? "Saving..." : "Save Stamp"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+    void removeWhiteBackground(uploadedStampRaw, threshold).then(setStampPreview);
+  }, [uploadedStampRaw, removeWhiteBg, threshold]);
 }
 
 function StaffTab() {

@@ -441,3 +441,36 @@ export const revokeCertificate = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+/**
+ * Check if a certificate has already been issued for a specific entry and template.
+ * Returns the existing issued certificate if found.
+ */
+export const checkExistingCertificate = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { conduct_log_id?: string | null; student_id: string; template_id: string }) => {
+    if (!UUID.test(d.student_id)) throw new Error("Invalid student ID.");
+    if (!UUID.test(d.template_id)) throw new Error("Invalid template ID.");
+    return d;
+  })
+  .handler(async ({ data, context }) => {
+    const { schoolId, admin } = await requireCertificateIssuer(context as never);
+
+    // Check for existing certificate
+    const query = (admin.from("issued_certificates" as never) as any)
+      .select("*")
+      .eq("school_id", schoolId)
+      .eq("student_id", data.student_id)
+      .eq("template_id", data.template_id)
+      .is("revoked_at", null);
+
+    if (data.conduct_log_id) {
+      query.eq("conduct_log_id", data.conduct_log_id);
+    }
+
+    const { data: existing, error } = await query.maybeSingle();
+
+    if (error) throw new Error(error.message);
+
+    return existing as IssuedCertificate | null;
+  });
