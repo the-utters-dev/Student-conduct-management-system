@@ -22,9 +22,9 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedStudentsRouteImport } from './routes/_authenticated/students'
 import { Route as VerifyCodeRouteImport } from './routes/verify.$code'
 import { Route as AuthenticatedCertificateEntryIdRouteImport } from './routes/_authenticated/certificate.$entryId'
-import { Route as AuthenticatedCertificatesSplatBulkRouteImport } from './routes/_authenticated/certificates.$.bulk'
+import { Route as AuthenticatedCertificatesBulkRouteImport } from './routes/_authenticated/certificates.bulk'
+import { Route as AuthenticatedSettingsCertificatesRouteImport } from './routes/_authenticated/settings_.certificates'
 import { Route as AuthenticatedPlatformSchoolsSchoolIdRouteImport } from './routes/_authenticated/platform_.schools.$schoolId'
-import { Route as AuthenticatedSettingsSplatCertificatesRouteImport } from './routes/_authenticated/settings.$.certificates'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
@@ -92,10 +92,16 @@ const AuthenticatedCertificateEntryIdRoute =
     path: '/certificate/$entryId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedCertificatesSplatBulkRoute =
-  AuthenticatedCertificatesSplatBulkRouteImport.update({
-    id: '/certificates/$/bulk',
-    path: '/certificates/$/bulk',
+const AuthenticatedCertificatesBulkRoute =
+  AuthenticatedCertificatesBulkRouteImport.update({
+    id: '/certificates/bulk',
+    path: '/certificates/bulk',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSettingsCertificatesRoute =
+  AuthenticatedSettingsCertificatesRouteImport.update({
+    id: '/settings_/certificates',
+    path: '/settings/certificates',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedPlatformSchoolsSchoolIdRoute =
@@ -103,12 +109,6 @@ const AuthenticatedPlatformSchoolsSchoolIdRoute =
     id: '/platform_/schools/$schoolId',
     path: '/platform/schools/$schoolId',
     getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedSettingsSplatCertificatesRoute =
-  AuthenticatedSettingsSplatCertificatesRouteImport.update({
-    id: '/$/certificates',
-    path: '/$/certificates',
-    getParentRoute: () => AuthenticatedSettingsRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -120,13 +120,13 @@ export interface FileRoutesByFullPath {
   '/conduct-actions': typeof AuthenticatedConductActionsRoute
   '/platform': typeof AuthenticatedPlatformRoute
   '/reports': typeof AuthenticatedReportsRoute
-  '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/settings': typeof AuthenticatedSettingsRoute
   '/students': typeof AuthenticatedStudentsRoute
   '/verify/$code': typeof VerifyCodeRoute
   '/certificate/$entryId': typeof AuthenticatedCertificateEntryIdRoute
-  '/certificates/$/bulk': typeof AuthenticatedCertificatesSplatBulkRoute
+  '/certificates/bulk': typeof AuthenticatedCertificatesBulkRoute
+  '/settings/certificates': typeof AuthenticatedSettingsCertificatesRoute
   '/platform/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
-  '/settings/$/certificates': typeof AuthenticatedSettingsSplatCertificatesRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -136,14 +136,14 @@ export interface FileRoutesByTo {
   '/conduct-actions': typeof AuthenticatedConductActionsRoute
   '/platform': typeof AuthenticatedPlatformRoute
   '/reports': typeof AuthenticatedReportsRoute
-  '/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/settings': typeof AuthenticatedSettingsRoute
   '/students': typeof AuthenticatedStudentsRoute
   '/verify/$code': typeof VerifyCodeRoute
   '/': typeof AuthenticatedIndexRoute
   '/certificate/$entryId': typeof AuthenticatedCertificateEntryIdRoute
-  '/certificates/$/bulk': typeof AuthenticatedCertificatesSplatBulkRoute
+  '/certificates/bulk': typeof AuthenticatedCertificatesBulkRoute
+  '/settings/certificates': typeof AuthenticatedSettingsCertificatesRoute
   '/platform/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
-  '/settings/$/certificates': typeof AuthenticatedSettingsSplatCertificatesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -155,14 +155,14 @@ export interface FileRoutesById {
   '/_authenticated/conduct-actions': typeof AuthenticatedConductActionsRoute
   '/_authenticated/platform': typeof AuthenticatedPlatformRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
-  '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/students': typeof AuthenticatedStudentsRoute
   '/verify/$code': typeof VerifyCodeRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/certificate/$entryId': typeof AuthenticatedCertificateEntryIdRoute
-  '/_authenticated/certificates/$/bulk': typeof AuthenticatedCertificatesSplatBulkRoute
+  '/_authenticated/certificates/bulk': typeof AuthenticatedCertificatesBulkRoute
+  '/_authenticated/settings_/certificates': typeof AuthenticatedSettingsCertificatesRoute
   '/_authenticated/platform_/schools/$schoolId': typeof AuthenticatedPlatformSchoolsSchoolIdRoute
-  '/_authenticated/settings/$/certificates': typeof AuthenticatedSettingsSplatCertificatesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -179,9 +179,9 @@ export interface FileRouteTypes {
     | '/students'
     | '/verify/$code'
     | '/certificate/$entryId'
-    | '/certificates/$/bulk'
+    | '/certificates/bulk'
+    | '/settings/certificates'
     | '/platform/schools/$schoolId'
-    | '/settings/$/certificates'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -196,9 +196,9 @@ export interface FileRouteTypes {
     | '/verify/$code'
     | '/'
     | '/certificate/$entryId'
-    | '/certificates/$/bulk'
+    | '/certificates/bulk'
+    | '/settings/certificates'
     | '/platform/schools/$schoolId'
-    | '/settings/$/certificates'
   id:
     | '__root__'
     | '/_authenticated'
@@ -214,9 +214,9 @@ export interface FileRouteTypes {
     | '/verify/$code'
     | '/_authenticated/'
     | '/_authenticated/certificate/$entryId'
-    | '/_authenticated/certificates/$/bulk'
+    | '/_authenticated/certificates/bulk'
+    | '/_authenticated/settings_/certificates'
     | '/_authenticated/platform_/schools/$schoolId'
-    | '/_authenticated/settings/$/certificates'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -320,11 +320,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCertificateEntryIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/certificates/$/bulk': {
-      id: '/_authenticated/certificates/$/bulk'
-      path: '/certificates/$/bulk'
-      fullPath: '/certificates/$/bulk'
-      preLoaderRoute: typeof AuthenticatedCertificatesSplatBulkRouteImport
+    '/_authenticated/certificates/bulk': {
+      id: '/_authenticated/certificates/bulk'
+      path: '/certificates/bulk'
+      fullPath: '/certificates/bulk'
+      preLoaderRoute: typeof AuthenticatedCertificatesBulkRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/settings_/certificates': {
+      id: '/_authenticated/settings_/certificates'
+      path: '/settings/certificates'
+      fullPath: '/settings/certificates'
+      preLoaderRoute: typeof AuthenticatedSettingsCertificatesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/platform_/schools/$schoolId': {
@@ -334,40 +341,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPlatformSchoolsSchoolIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/settings/$/certificates': {
-      id: '/_authenticated/settings/$/certificates'
-      path: '/$/certificates'
-      fullPath: '/settings/$/certificates'
-      preLoaderRoute: typeof AuthenticatedSettingsSplatCertificatesRouteImport
-      parentRoute: typeof AuthenticatedSettingsRoute
-    }
   }
 }
-
-interface AuthenticatedSettingsRouteChildren {
-  AuthenticatedSettingsSplatCertificatesRoute: typeof AuthenticatedSettingsSplatCertificatesRoute
-}
-
-const AuthenticatedSettingsRouteChildren: AuthenticatedSettingsRouteChildren = {
-  AuthenticatedSettingsSplatCertificatesRoute:
-    AuthenticatedSettingsSplatCertificatesRoute,
-}
-
-const AuthenticatedSettingsRouteWithChildren =
-  AuthenticatedSettingsRoute._addFileChildren(
-    AuthenticatedSettingsRouteChildren,
-  )
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAuditLogsRoute: typeof AuthenticatedAuditLogsRoute
   AuthenticatedConductActionsRoute: typeof AuthenticatedConductActionsRoute
   AuthenticatedPlatformRoute: typeof AuthenticatedPlatformRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
-  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRouteWithChildren
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStudentsRoute: typeof AuthenticatedStudentsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedCertificateEntryIdRoute: typeof AuthenticatedCertificateEntryIdRoute
-  AuthenticatedCertificatesSplatBulkRoute: typeof AuthenticatedCertificatesSplatBulkRoute
+  AuthenticatedCertificatesBulkRoute: typeof AuthenticatedCertificatesBulkRoute
+  AuthenticatedSettingsCertificatesRoute: typeof AuthenticatedSettingsCertificatesRoute
   AuthenticatedPlatformSchoolsSchoolIdRoute: typeof AuthenticatedPlatformSchoolsSchoolIdRoute
 }
 
@@ -376,12 +363,13 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedConductActionsRoute: AuthenticatedConductActionsRoute,
   AuthenticatedPlatformRoute: AuthenticatedPlatformRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
-  AuthenticatedSettingsRoute: AuthenticatedSettingsRouteWithChildren,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStudentsRoute: AuthenticatedStudentsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedCertificateEntryIdRoute: AuthenticatedCertificateEntryIdRoute,
-  AuthenticatedCertificatesSplatBulkRoute:
-    AuthenticatedCertificatesSplatBulkRoute,
+  AuthenticatedCertificatesBulkRoute: AuthenticatedCertificatesBulkRoute,
+  AuthenticatedSettingsCertificatesRoute:
+    AuthenticatedSettingsCertificatesRoute,
   AuthenticatedPlatformSchoolsSchoolIdRoute:
     AuthenticatedPlatformSchoolsSchoolIdRoute,
 }

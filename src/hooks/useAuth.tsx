@@ -65,13 +65,38 @@ interface AuthState {
   isSchoolDirector: boolean;
   /** False until the multi-tenant SQL script has been run. */
   tenancyEnabled: boolean;
+  /** The school whose data the pages show: the user's own school, or the school in support view. */
   schoolId: string | null;
   school: TenantSchool | null;
   settings: SchoolSettings | null;
+  /** True while the platform owner is viewing a school's workspace (support view). */
+  supportView: boolean;
+  enterSupportView: (schoolId: string) => Promise<void>;
+  exitSupportView: () => Promise<void>;
   can: (permission: PermissionKey) => boolean;
   roleLabel: (role: AppRole) => string;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
+}
+
+// Support view lasts for the browser tab only, so it never leaks into a new session.
+const SUPPORT_VIEW_KEY = "scdms.supportSchoolId";
+
+function readSupportSchoolId(): string | null {
+  try {
+    return typeof window === "undefined" ? null : window.sessionStorage.getItem(SUPPORT_VIEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSupportSchoolId(id: string | null) {
+  try {
+    if (id) window.sessionStorage.setItem(SUPPORT_VIEW_KEY, id);
+    else window.sessionStorage.removeItem(SUPPORT_VIEW_KEY);
+  } catch {
+    // Storage blocked (private mode): support view then lasts until the page reloads.
+  }
 }
 
 const DEFAULT_ROLE_LABELS: Record<AppRole, string> = {
@@ -97,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [school, setSchool] = useState<TenantSchool | null>(null);
   const [settings, setSettings] = useState<SchoolSettings | null>(null);
   const [allRoles, setAllRoles] = useState<AppRole[]>([]);
+  const [supportSchoolId, setSupportSchoolId] = useState<string | null>(null);
 
   async function loadIdentity(userId: string | undefined) {
     if (!userId) {
@@ -105,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSchool(null);
       setSettings(null);
       setAllRoles([]);
+      setSupportSchoolId(null);
       return;
     }
     const db = supabase as unknown as SupabaseClient;
@@ -122,20 +149,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenancyEnabled(hasTenancy);
     setProfile(profileRow);
 
+    const roles = (roleRows ?? []).map((r) => r.role as AppRole);
+
+    // Only the platform owner can use support view; anyone else has a stale key cleared.
+    let viewedSchoolId = readSupportSchoolId();
+    if (viewedSchoolId && (!hasTenancy || !roles.includes("system_admin"))) {
+      writeSupportSchoolId(null);
+      viewedSchoolId = null;
+    }
+    const activeSchoolId = viewedSchoolId ?? profileRow?.school_id ?? null;
+
     // Load school and settings
-    if (hasTenancy && profileRow?.school_id) {
+    if (hasTenancy && activeSchoolId) {
       const [schoolRes, settingsRes] = await Promise.all([
-        db.from("schools").select("id, name, plan, status").eq("id", profileRow.school_id).maybeSingle(),
-        db.from("school_settings").select("role_titles, permissions").eq("school_id", profileRow.school_id).maybeSingle(),
+        db.from("schools").select("id, name, plan, status").eq("id", activeSchoolId).maybeSingle(),
+        db.from("school_settings").select("role_titles, permissions").eq("school_id", activeSchoolId).maybeSingle(),
       ]);
-      setSchool((schoolRes.data as TenantSchool | null) ?? null);
-      setSettings((settingsRes.data as SchoolSettings | null) ?? null);
+      const loadedSchool = (schoolRes.data as TenantSchool | null) ?? null;
+      if (viewedSchoolId && !loadedSchool) {
+        // The school no longer exists: leave support view.
+        writeSupportSchoolId(null);
+        viewedSchoolId = null;
+      }
+      setSchool(loadedSchool);
+      setSettings(loadedSchool ? ((settingsRes.data as SchoolSettings | null) ?? null) : null);
     } else {
       setSchool(null);
       setSettings(null);
     }
+    setSupportSchoolId(viewedSchoolId);
 
-    const roles = (roleRows ?? []).map((r) => r.role as AppRole);
     setAllRoles(roles);
 
     // Prefer new roles, fall back to legacy
@@ -224,9 +267,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isPlatformAdmin: role === "system_admin",
       isSchoolDirector: role === "school_director" || role === "school_leader",
       tenancyEnabled,
-      schoolId: profile?.school_id ?? null,
+      schoolId: (role === "system_admin" ? supportSchoolId : null) ?? profile?.school_id ?? null,
       school,
       settings,
+      supportView: role === "system_admin" && Boolean(supportSchoolId),
+      enterSupportView: async (id: string) => {
+        writeSupportSchoolId(id);
+        // Drop every cached query so nothing from the previous school is shown.
+        queryClient.clear();
+        await loadIdentity(session?.user.id);
+      },
+      exitSupportView: async () => {
+        writeSupportSchoolId(null);
+        queryClient.clear();
+        await loadIdentity(session?.user.id);
+      },
       can: (permission: PermissionKey) => {
         // Platform admin and school director always have all permissions
         if (role === "system_admin" || role === "school_director" || role === "school_leader") {
@@ -248,6 +303,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signOut: async () => {
         await supabase.auth.signOut();
+        writeSupportSchoolId(null);
+        setSupportSchoolId(null);
         setProfile(null);
         setRole(null);
         setSession(null);
@@ -263,7 +320,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await loadIdentity(data.session?.user.id);
       },
     }),
-    [loading, session, profile, role, scope, tenancyEnabled, school, settings, allRoles],
+    [loading, session, profile, role, scope, tenancyEnabled, school, settings, allRoles, supportSchoolId],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

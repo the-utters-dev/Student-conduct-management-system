@@ -31,6 +31,7 @@ import {
   streamOf,
   type StudentRow,
 } from "@/lib/students";
+import { schoolColumn, scopeToSchool } from "@/lib/tenant";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -92,14 +93,16 @@ function StudentsPage() {
   const canDelete = can("delete_students");
 
   const { data, isPending, error } = useQuery({
-    queryKey: ["students"],
+    queryKey: ["students", schoolId],
+    enabled: role !== "system_admin" || Boolean(schoolId),
     queryFn: async (): Promise<StudentRow[]> => {
       // Fetch in 1000-row batches so large schools aren't truncated.
       const all: StudentRow[] = [];
       for (let from = 0; ; from += 1000) {
-        const { data: rows, error: queryError } = await supabase
-          .from("students")
-          .select("*")
+        const { data: rows, error: queryError } = await scopeToSchool(
+          supabase.from("students").select("*"),
+          schoolId,
+        )
           .order("full_name", { ascending: true })
           .range(from, from + 999);
         if (queryError) throw queryError;
@@ -442,6 +445,7 @@ function validate(f: Form) {
 
 function AddStudentDialog({ open, onOpenChange, academicYear }: { open: boolean; onOpenChange: (o: boolean) => void; academicYear: string }) {
   const qc = useQueryClient();
+  const { schoolId } = useAuth();
   const [f, setF] = useState<Form>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
   const [sectors, setSectors] = useState<string[]>([]);
@@ -484,6 +488,8 @@ function AddStudentDialog({ open, onOpenChange, academicYear }: { open: boolean;
     mutationFn: async () => {
       const className = [f.class_level, f.combination.trim().toUpperCase(), f.stream].filter(Boolean).join(" ");
       const base = {
+        // Explicit so a student added in support view belongs to the viewed school.
+        ...schoolColumn(schoolId),
         first_name: f.first_name.trim(),
         last_name: f.last_name.trim(),
         full_name: `${f.first_name.trim()} ${f.last_name.trim()}`,

@@ -12,7 +12,7 @@ import {
 } from "@/lib/certificate.functions";
 import { QRCode } from "@/components/QRCode";
 
-export const Route = createFileRoute("/_authenticated/certificates/$/bulk")({
+export const Route = createFileRoute("/_authenticated/certificates/bulk")({
   component: BulkCertificatesPage,
 });
 

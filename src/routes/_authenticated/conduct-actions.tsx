@@ -6,6 +6,7 @@ import { DashboardShell } from "@/components/DashboardShell";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { db, insertWithColumnFallback, uploadEvidence } from "@/lib/evidence";
+import { auditPayload } from "@/lib/tenant";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { ParentMessageComposer, type ComposerEntry } from "@/components/ParentMessageComposer";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -90,7 +91,7 @@ function todayISO() {
 }
 
 function ConductActionsPage() {
-  const { isDisciplineStaff, user, schoolId, school, can } = useAuth();
+  const { isDisciplineStaff, user, schoolId, school, can, supportView } = useAuth();
   const { data: schoolSettings } = useSchoolSettings();
   const queryClient = useQueryClient();
 
@@ -135,6 +136,7 @@ function ConductActionsPage() {
       const { data, error } = await supabase
         .from("students")
         .select("id, admission_no, full_name, class_name, house, parent_phone")
+        .eq("school_id", schoolId)
         .eq("is_active", true)
         .order("full_name");
       if (error) throw error;
@@ -150,6 +152,7 @@ function ConductActionsPage() {
       const { data, error } = await supabase
         .from("offenses_catalog")
         .select("id, code, title, category, severity, marks_deducted")
+        .eq("school_id", schoolId)
         .eq("is_active", true)
         .order("code");
       if (error) throw error;
@@ -167,6 +170,7 @@ function ConductActionsPage() {
       const res = await db
         .from("good_deed_categories")
         .select("id, name, default_marks, default_merit_points, is_active")
+        .eq("school_id", schoolId)
         .eq("is_active", true)
         .order("name");
       if (res.error) {
@@ -193,6 +197,7 @@ function ConductActionsPage() {
       const { data, error } = await supabase
         .from("academic_terms")
         .select("id, name, starting_marks")
+        .eq("school_id", schoolId)
         .eq("is_active", true)
         .maybeSingle();
       if (error) throw error;
@@ -208,6 +213,7 @@ function ConductActionsPage() {
       const res = await db
         .from("conduct_logs")
         .select("id, student_id, entry_type, marks, reason, occurred_on, evidence_url, offense:offenses_catalog(title), good_deed_category:good_deed_categories(name), student:students(full_name, admission_no, class_name, parent_phone)")
+        .eq("school_id", schoolId)
         .order("created_at", { ascending: false })
         .limit(12);
       if (res.error) throw res.error;
@@ -375,6 +381,7 @@ function ConductActionsPage() {
             ? `Good news from ${schoolSettings?.school_name ?? "School"}! ${selectedStudent?.full_name} was recognised for ${cause}. Thank you for raising a responsible child.`
             : `SCDMS Update: ${selectedStudent?.full_name} received a ${label} of ${markValue} marks for '${cause}'. Current Conduct Balance: ${resultingBalance}/${startingMarks}.`;
           const { error: notifyError } = await supabase.from("notification_logs").insert({
+            school_id: schoolId,
             conduct_log_id: log.id,
             student_id: studentId,
             recipient_phone: phone,
@@ -390,11 +397,12 @@ function ConductActionsPage() {
 
         const auditAction = entryType === "good_deed" ? "CREATE_GOOD_DEED" : "CREATE_CONDUCT_LOG";
         const { error: auditError } = await supabase.from("audit_logs").insert({
+          school_id: schoolId,
           user_id: user?.id ?? null,
           action: auditAction,
           entity_type: "conduct_logs",
           entity_id: log.id,
-          payload: {
+          payload: auditPayload({
             student_id: studentId,
             action_type: entryType,
             marks_changed: entryType === "deduction" ? -markValue : markValue,
@@ -403,7 +411,7 @@ function ConductActionsPage() {
               user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             },
-          },
+          }, supportView),
         });
         if (auditError) console.error("Failed to write audit entry", auditError);
 
@@ -479,6 +487,7 @@ function ConductActionsPage() {
                 : `SCDMS Update: ${student.full_name} received a ${label} of ${markValue} marks for '${cause}'.`;
 
               messagesToQueue.push({
+                school_id: schoolId,
                 conduct_log_id: log.id,
                 student_id: log.student_id,
                 recipient_phone: student.parent_phone,
@@ -504,17 +513,18 @@ function ConductActionsPage() {
         // Create audit logs for each entry
         const auditAction = entryType === "good_deed" ? "CREATE_GOOD_DEED" : "CREATE_CONDUCT_LOG";
         const auditLogs = (logs ?? []).map(log => ({
+          school_id: schoolId,
           user_id: user?.id ?? null,
           action: auditAction,
           entity_type: "conduct_logs",
           entity_id: log.id,
-          payload: {
+          payload: auditPayload({
             student_id: log.student_id,
             action_type: entryType,
             marks_changed: entryType === "deduction" ? -markValue : markValue,
             timestamp: new Date().toISOString(),
             bulk_entry: true,
-          },
+          }, supportView),
         }));
 
         if (auditLogs.length > 0) {
@@ -562,8 +572,11 @@ function ConductActionsPage() {
       setEvidenceFile(null);
       setEvidenceKey((k) => k + 1);
       setSelectedStudentIds(new Set());
+      // Prefix keys, so every balance and log list (dashboard, sidebar, reports) refreshes.
       await queryClient.invalidateQueries({ queryKey: ["balance"] });
-      await queryClient.invalidateQueries({ queryKey: ["conduct-logs", schoolId] });
+      await queryClient.invalidateQueries({ queryKey: ["student-balances"] });
+      await queryClient.invalidateQueries({ queryKey: ["conduct-logs"] });
+      await queryClient.invalidateQueries({ queryKey: ["recent-good-deeds"] });
       await queryClient.invalidateQueries({ queryKey: ["notification-logs", schoolId] });
       await queryClient.invalidateQueries({ queryKey: ["audit-logs", schoolId] });
     },

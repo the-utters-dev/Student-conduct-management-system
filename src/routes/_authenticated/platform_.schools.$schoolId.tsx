@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -248,13 +248,37 @@ function OverviewTab({
       <div className={card}>
         <h3 className="font-display text-lg font-bold text-ink">Support View</h3>
         <p className="mt-2 text-sm text-soft">
-          Open this school's workspace to troubleshoot or provide support.
+          Open this school's workspace to troubleshoot or provide support. Every page shows only this school's data,
+          and anything you record is saved to this school and marked as done by the platform owner.
         </p>
-        <button className={`${btn} mt-4`} onClick={() => toast.info("Support view not yet implemented")}>
-          Open school view
-        </button>
+        <OpenSchoolViewButton schoolId={school.id} />
       </div>
     </div>
+  );
+}
+
+/** Opens the school's dashboard in support view (banner: "Viewing <school> as platform owner"). */
+function OpenSchoolViewButton({ schoolId }: { schoolId: string }) {
+  const { enterSupportView } = useAuth();
+  const navigate = useNavigate();
+  const [opening, setOpening] = useState(false);
+  return (
+    <button
+      className={`${btn} mt-4`}
+      disabled={opening}
+      onClick={async () => {
+        setOpening(true);
+        try {
+          await enterSupportView(schoolId);
+          await navigate({ to: "/" });
+        } catch (e) {
+          toast.error((e as Error).message);
+          setOpening(false);
+        }
+      }}
+    >
+      {opening ? "Opening…" : "Open school view"}
+    </button>
   );
 }
 

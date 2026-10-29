@@ -5,6 +5,10 @@ import avatar from "@/assets/avatar.png";
 import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useConductStandings } from "@/hooks/useConductStandings";
+import { SchoolPicker, SupportViewBanner } from "@/components/SupportView";
+
+// Pages that show one school's data. The platform owner must pick a school (support view) first.
+const SCHOOL_PAGES = new Set(["/", "/students", "/conduct-actions", "/reports", "/audit-logs"]);
 
 const NAV_ITEMS = [
   { label: "Dashboard", to: "/", letter: "D", disciplineOnly: false },
@@ -76,7 +80,8 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { profile, school: tenantSchool, role, scope, isDisciplineStaff, isPlatformAdmin, tenancyEnabled, schoolId, can, roleLabel, signOut } = useAuth();
+  const { profile, school: tenantSchool, role, scope, isDisciplineStaff, isPlatformAdmin, supportView, tenancyEnabled, schoolId, can, roleLabel, signOut } = useAuth();
+  const needsSchoolPick = isPlatformAdmin && !supportView && tenancyEnabled && SCHOOL_PAGES.has(pathname);
   const navItems = NAV_ITEMS.filter(
     (i) =>
       (!i.disciplineOnly || isDisciplineStaff) &&
@@ -97,7 +102,9 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
     : null;
   const roleLabelText = role ? roleLabel(role) : null;
   const { data: school } = useSchoolSettings();
-  const schoolName = isPlatformAdmin ? "SCDMS Platform" : (tenantSchool?.name || school?.school_name || "Your School");
+  const schoolName = isPlatformAdmin && !supportView
+    ? "SCDMS Platform"
+    : (tenantSchool?.name || school?.school_name || "Your School");
   const { atRisk, criticalCount } = useConductStandings();
   const openCases = atRisk.length;
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
@@ -261,11 +268,15 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
             </div>
           </header>
 
+          <SupportViewBanner />
+
           {blocked ? (
             <div className="rounded-3xl border border-glass-line bg-glass p-10 shadow-panel backdrop-blur-2xl">
               <h2 className="font-display text-2xl font-bold text-ink">Access paused</h2>
               <p className="mt-2 max-w-md text-sm text-soft">{blocked}</p>
             </div>
+          ) : needsSchoolPick ? (
+            <SchoolPicker />
           ) : (
             children
           )}

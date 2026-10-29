@@ -21,12 +21,13 @@ export const Route = createFileRoute("/_authenticated/certificate/$entryId")({
 
 function CertificatePage() {
   const params = Route.useParams() as { entryId: string };
-  const { schoolId, isSchoolDirector, isPlatformAdmin, can } = useAuth();
+  const { schoolId, isSchoolDirector, isPlatformAdmin, role } = useAuth();
   const { data: school } = useSchoolSettings();
   const qc = useQueryClient();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
-  const canIssue = isSchoolDirector || isPlatformAdmin || can("issue_certificates");
+  // Mirrors requireCertificateIssuer in certificate.functions.ts (Director or Master of Discipline).
+  const canIssue = isSchoolDirector || isPlatformAdmin || role === "master_of_discipline";
 
   const { data: entry, isLoading: entryLoading } = useQuery({
     queryKey: ["conduct-entry", params.entryId, schoolId],

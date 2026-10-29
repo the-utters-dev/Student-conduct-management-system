@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { levelOf, nextAcademicYear, statusOf, type StudentRow } from "@/lib/students";
 
@@ -21,6 +22,7 @@ export function PromotionDialog({
   canPromote: boolean;
 }) {
   const qc = useQueryClient();
+  const { schoolId } = useAuth();
   const [repeating, setRepeating] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const newYear = nextAcademicYear(academicYear);
@@ -70,15 +72,11 @@ export function PromotionDialog({
         if (error) throw error;
       }
       // Advance the school's academic year (leaders/admins only; ignore if not permitted).
-      // Try school_id first, fallback to id=1 for backwards compatibility
-      const userId = (await supabase.auth.getUser()).data.user?.id;
-      if (userId) {
-        const { data: profile } = await (supabase.from("profiles") as any).select("school_id").eq("id", userId).maybeSingle();
-        if (profile?.school_id) {
-          await (supabase.from("school_settings") as any).update({ academic_year: newYear }).eq("school_id", profile.school_id);
-        } else {
-          await supabase.from("school_settings").update({ academic_year: newYear }).eq("id", 1);
-        }
+      // Update the academic year of the school on screen (the viewed school in support view).
+      if (schoolId) {
+        await (supabase.from("school_settings") as any).update({ academic_year: newYear }).eq("school_id", schoolId);
+      } else {
+        await supabase.from("school_settings").update({ academic_year: newYear }).eq("id", 1);
       }
     },
     onSuccess: () => {

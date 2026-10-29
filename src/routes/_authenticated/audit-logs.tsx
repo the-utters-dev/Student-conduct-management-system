@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth, type AppRole } from "@/hooks/useAuth";
+import { scopeToSchool } from "@/lib/tenant";
 
 export const Route = createFileRoute("/_authenticated/audit-logs")({
   head: () => ({
@@ -80,10 +81,11 @@ function AuditViewer() {
 
   const q = useQuery({
     queryKey: ["audit-logs", schoolId],
+    // The platform owner sees one school at a time, chosen in support view.
+    enabled: !isPlatformAdmin || Boolean(schoolId),
     queryFn: async () => {
-      // The database also enforces this; filtering here keeps platform admins scoped too.
-      let query = (supabase as unknown as SupabaseClient).from("audit_logs").select("*");
-      if (schoolId && !isPlatformAdmin) query = query.eq("school_id", schoolId);
+      // The database also enforces this; filtering here keeps the platform owner scoped too.
+      const query = scopeToSchool((supabase as unknown as SupabaseClient).from("audit_logs").select("*"), schoolId);
       const { data: logs, error } = (await query
         .order("created_at", { ascending: false })
         .limit(1000)) as { data: AuditRow[] | null; error: Error | null };

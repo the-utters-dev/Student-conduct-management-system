@@ -1,8 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
-import { config } from 'dotenv';
 
-// Load environment variables
-config();
+// Load TEST_* accounts and Supabase keys from .env (Node's built-in loader; no dotenv dependency).
+try {
+  process.loadEnvFile('.env');
+} catch {
+  // No .env file: rely on variables already set in the environment.
+}
+
+// Override with E2E_PORT to test against a dev server on another port.
+const port = Number(process.env.E2E_PORT ?? 8080);
+const baseURL = `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -10,10 +17,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: 'html',
+  timeout: 150 * 1000,
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:8080',
-    trace: 'on-first-retry',
+    baseURL,
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
 
@@ -25,9 +33,9 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:8080',
+    command: port === 8080 ? 'npm run dev' : `npm run dev -- --port ${port} --strictPort`,
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
+    timeout: 180 * 1000,
   },
 });

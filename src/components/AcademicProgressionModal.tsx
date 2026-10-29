@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isMissingColumn, levelOf, nextAcademicYear, statusOf, type StudentRow } from "@/lib/students";
 
@@ -28,6 +29,7 @@ export function AcademicProgressionModal({
   open, onOpenChange, students, academicYear,
 }: { open: boolean; onOpenChange: (o: boolean) => void; students: StudentRow[]; academicYear: string }) {
   const qc = useQueryClient();
+  const { schoolId } = useAuth();
   const years = useMemo(() => yearOptions(academicYear), [academicYear]);
   const [fromYear, setFromYear] = useState(academicYear);
   const [toYear, setToYear] = useState(nextAcademicYear(academicYear));
@@ -79,15 +81,11 @@ export function AcademicProgressionModal({
       return { count: chosen.length, mode: hist.error ? ("no-history" as const) : ("fallback" as const) };
     },
     onSuccess: async ({ count, mode }) => {
-      // Update school's academic year - try school_id first, fallback to id=1
-      const userId = (await supabase.auth.getUser()).data.user?.id;
-      if (userId) {
-        const { data: profile } = await (supabase.from("profiles") as any).select("school_id").eq("id", userId).maybeSingle();
-        if (profile?.school_id) {
-          await (supabase.from("school_settings") as any).update({ academic_year: toYear }).eq("school_id", profile.school_id);
-        } else {
-          await supabase.from("school_settings").update({ academic_year: toYear }).eq("id", 1);
-        }
+      // Update the academic year of the school on screen (the viewed school in support view).
+      if (schoolId) {
+        await (supabase.from("school_settings") as any).update({ academic_year: toYear }).eq("school_id", schoolId);
+      } else {
+        await supabase.from("school_settings").update({ academic_year: toYear }).eq("id", 1);
       }
       toast.success(`Rollover complete: ${count} students moved to ${toYear}.`);
       if (mode === "no-history") toast.warning("History wasn't saved — run supabase/academic-progression.sql to enable it.");

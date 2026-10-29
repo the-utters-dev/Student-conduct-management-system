@@ -1,344 +1,168 @@
 import { test, expect, type Page } from '@playwright/test';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { accounts, hasAccount, signIn, trackErrors, expectNoErrorPage, type AccountKey } from './helpers';
 
-const TEST_DIRECTOR_EMAIL = process.env.TEST_DIRECTOR_EMAIL!;
-const TEST_DIRECTOR_PASSWORD = process.env.TEST_DIRECTOR_PASSWORD!;
-const TEST_MASTER_EMAIL = process.env.TEST_MASTER_EMAIL!;
-const TEST_MASTER_PASSWORD = process.env.TEST_MASTER_PASSWORD!;
-const TEST_OWNER_EMAIL = process.env.TEST_OWNER_EMAIL!;
-const TEST_OWNER_PASSWORD = process.env.TEST_OWNER_PASSWORD!;
+// These tests record real entries in the connected database. Every bulk deduction of 1 mark
+// is followed by a bulk restoration of 1 mark, so balances end where they started.
+const REASON = 'Automated e2e check (reversed immediately)';
 
-async function signIn(page: Page, email: string, password: string) {
-  await page.goto('/sign-in');
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  await page.click('button[type="submit"]');
-  // Wait for navigation to complete
-  await page.waitForURL((url) => !url.pathname.includes('sign-in'), { timeout: 10000 });
+/** A Supabase client signed in as the same test user, to read balances independently of the UI. */
+async function dbAs(key: AccountKey): Promise<SupabaseClient> {
+  const url = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '';
+  const anon = process.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY ?? '';
+  const client = createClient(url, anon, { auth: { persistSession: false } });
+  const { error } = await client.auth.signInWithPassword(accounts[key]);
+  if (error) throw error;
+  return client;
 }
 
-async function goToConductActions(page: Page) {
+/** Sum of current marks for the user's school, optionally one class level. */
+async function totalMarks(db: SupabaseClient, level?: string) {
+  let q = db.from('student_conduct_balances').select('student_id, class_name, current_marks');
+  if (level) q = q.like('class_name', `${level}%`);
+  const { data, error } = await q;
+  if (error) throw error;
+  return { total: (data ?? []).reduce((s, r) => s + (r.current_marks ?? 0), 0), count: data?.length ?? 0 };
+}
+
+const field = (page: Page, label: string, tag: 'select' | 'input') =>
+  page.locator(`label:text-is("${label}") + ${tag}`);
+
+async function openConductActions(page: Page, key: AccountKey) {
+  await signIn(page, key);
   await page.goto('/conduct-actions');
-  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: 'New conduct entry' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/^Recording against /)).toBeVisible({ timeout: 30_000 });
 }
 
-test.describe('Conduct Actions - Bug Reproduction', () => {
-  test.describe('As School Director', () => {
-    test.beforeEach(async ({ page }) => {
-      await signIn(page, TEST_DIRECTOR_EMAIL, TEST_DIRECTOR_PASSWORD);
-      await goToConductActions(page);
-    });
+/** Picks the first offence, then forces the marks to 1 (the offence fills in its own default). */
+async function chooseOffenceAndOneMark(page: Page, entry: 'Deduction' | 'Restoration') {
+  await page.getByRole('button', { name: new RegExp(`^${entry}`) }).click();
+  if (entry === 'Deduction') {
+    const offence = field(page, 'Offense / reason code', 'select');
+    const firstOffence = await offence.locator('option').nth(1).getAttribute('value');
+    expect(firstOffence, 'The school has no active offences in its catalogue').toBeTruthy();
+    await offence.selectOption(firstOffence!);
+  }
+  await field(page, entry === 'Deduction' ? 'Marks to deduct' : 'Marks to restore', 'input').fill('1');
+  await page.locator('label:text-is("Incident details") + textarea').fill(REASON);
+  // Never queue real parent messages from a test run.
+  const notify = page.locator('label:has-text("Notify parent via SMS") input[type="checkbox"]');
+  if ((await notify.count()) && (await notify.isChecked())) await notify.uncheck();
+}
 
-    test('BUG A: parent notification checkbox should be tickable', async ({ page }) => {
-      // Wait for the form to load
-      await expect(page.locator('h2:has-text("New conduct entry")')).toBeVisible();
+async function submitBulk(page: Page, title: 'Whole Level' | 'Whole School') {
+  const submit = page.getByRole('button', { name: 'Record conduct entry' });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText(`Confirm ${title} Entry`)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Confirm and submit' }).click();
+  await expect(page.getByText(/^Recorded for \d+ students/)).toBeVisible({ timeout: 30_000 });
+}
 
-      // Find the checkbox - it's for "Notify parent via SMS"
-      const checkbox = page.locator('input[type="checkbox"]').first();
+/** Chooses the first class level that has students; returns it. */
+async function chooseLevelWithStudents(page: Page) {
+  const select = field(page, 'Class level', 'select');
+  const levels = (await select.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value)))
+    .filter(Boolean);
+  for (const level of levels) {
+    await select.selectOption(level);
+    if (await page.getByText(new RegExp(`^\\d+ students? in ${level}$`)).isVisible()) return level;
+  }
+  throw new Error(`No class level with students (levels offered: ${levels.join(', ')})`);
+}
 
-      // Log initial state
-      const initialChecked = await checkbox.isChecked();
-      console.log('Initial checkbox state:', initialChecked);
+for (const user of ['director', 'master'] as const) {
+  test.describe(`Conduct actions as ${user}`, () => {
+    test.skip(!hasAccount(user), `TEST_${user.toUpperCase()}_* not set in .env`);
 
-      // Try to uncheck it if checked, or check it if unchecked
-      if (initialChecked) {
-        await checkbox.click();
-        await page.waitForTimeout(500); // Give time for state update
-        const afterClick = await checkbox.isChecked();
-        console.log('After clicking (should be unchecked):', afterClick);
-        expect(afterClick).toBe(false);
-
-        // Click again to re-check
-        await checkbox.click();
-        await page.waitForTimeout(500);
-        const afterSecondClick = await checkbox.isChecked();
-        console.log('After second click (should be checked):', afterSecondClick);
-        expect(afterSecondClick).toBe(true);
-      } else {
-        await checkbox.click();
-        await page.waitForTimeout(500);
-        const afterClick = await checkbox.isChecked();
-        console.log('After clicking (should be checked):', afterClick);
-        expect(afterClick).toBe(true);
-      }
-    });
-
-    test('BUG B: whole level deduction should work', async ({ page }) => {
-      // Click on "Whole level" mode
-      await page.click('button:has-text("Whole level")');
-      await page.waitForTimeout(500);
-
-      // Select a class level (e.g., P1, S1, etc.)
-      const levelSelect = page.locator('select').filter({ hasText: 'Choose level' }).or(page.locator('select').first());
-      await levelSelect.selectOption({ index: 1 }); // Select first available level
-      await page.waitForTimeout(500);
-
-      // Select an offense
-      const offenseSelect = page.locator('select').filter({ hasText: 'Select an offense' }).or(page.locator('select').nth(1));
-      await offenseSelect.selectOption({ index: 1 }); // Select first offense
-      await page.waitForTimeout(500);
-
-      // Check if submit button is enabled
-      const submitButton = page.locator('button[type="submit"]:has-text("Record conduct entry")');
-      const isDisabled = await submitButton.isDisabled();
-      console.log('Submit button disabled state for whole level:', isDisabled);
-
-      if (!isDisabled) {
-        // Try to submit
-        await submitButton.click();
-
-        // Should see confirmation dialog
-        await expect(page.locator('text=Confirm Whole Level Entry')).toBeVisible({ timeout: 5000 });
-
-        // Click confirm
-        await page.click('button:has-text("Confirm and submit")');
-
-        // Wait for success message
-        await expect(page.locator('text=Recorded for')).toBeVisible({ timeout: 10000 });
-      } else {
-        console.error('Submit button is disabled - cannot proceed with test');
-        // Take screenshot for debugging
-        await page.screenshot({ path: 'whole-level-disabled.png', fullPage: true });
-        throw new Error('Submit button is disabled for whole level entry');
-      }
-    });
-
-    test('BUG B: whole school deduction should work', async ({ page }) => {
-      // Click on "Whole school" mode
-      const wholeSchoolButton = page.locator('button:has-text("Whole school")');
-      if (await wholeSchoolButton.count() === 0) {
-        console.log('Whole school option not available (requires school_wide_entries permission)');
-        test.skip();
-        return;
-      }
-
-      await wholeSchoolButton.click();
-      await page.waitForTimeout(500);
-
-      // Should see whole school summary
-      await expect(page.locator('text=Whole school selected')).toBeVisible();
-
-      // Select an offense
-      const offenseSelect = page.locator('select').filter({ hasText: 'Select an offense' }).or(page.locator('select').first());
-      await offenseSelect.selectOption({ index: 1 }); // Select first offense
-      await page.waitForTimeout(500);
-
-      // Check if submit button is enabled
-      const submitButton = page.locator('button[type="submit"]:has-text("Record conduct entry")');
-      const isDisabled = await submitButton.isDisabled();
-      console.log('Submit button disabled state for whole school:', isDisabled);
-
-      if (!isDisabled) {
-        // Try to submit
-        await submitButton.click();
-
-        // Should see confirmation dialog
-        await expect(page.locator('text=Confirm Whole School Entry')).toBeVisible({ timeout: 5000 });
-
-        // Click confirm
-        await page.click('button:has-text("Confirm and submit")');
-
-        // Wait for success message
-        await expect(page.locator('text=Recorded for')).toBeVisible({ timeout: 10000 });
-      } else {
-        console.error('Submit button is disabled - cannot proceed with test');
-        // Take screenshot for debugging
-        await page.screenshot({ path: 'whole-school-disabled.png', fullPage: true });
-        throw new Error('Submit button is disabled for whole school entry');
-      }
-    });
-  });
-
-  test.describe('As Master of Discipline', () => {
-    test.beforeEach(async ({ page }) => {
-      await signIn(page, TEST_MASTER_EMAIL, TEST_MASTER_PASSWORD);
-      await goToConductActions(page);
-    });
-
-    test('BUG A: parent notification checkbox should be tickable', async ({ page }) => {
-      // Wait for the form to load
-      await expect(page.locator('h2:has-text("New conduct entry")')).toBeVisible();
-
-      // Find the checkbox
-      const checkbox = page.locator('input[type="checkbox"]').first();
-
-      // Log initial state
-      const initialChecked = await checkbox.isChecked();
-      console.log('Initial checkbox state (Master):', initialChecked);
-
-      // Try to toggle it
+    test('"Notify parent" checkbox toggles on and off', async ({ page }) => {
+      const errors = trackErrors(page);
+      await openConductActions(page, user);
+      const checkbox = page.locator('label:has-text("Notify parent via SMS") input[type="checkbox"]');
+      await expect(checkbox, 'Checkbox hidden: this role lacks the "Message parents" permission').toBeVisible();
+      const initial = await checkbox.isChecked();
       await checkbox.click();
-      await page.waitForTimeout(500);
-      const afterClick = await checkbox.isChecked();
-      console.log('After clicking (Master):', afterClick);
-      expect(afterClick).not.toBe(initialChecked);
+      await expect(checkbox).toBeChecked({ checked: !initial });
+      await checkbox.click();
+      await expect(checkbox).toBeChecked({ checked: initial });
+      expect(errors.filter((e) => e.startsWith('pageerror'))).toEqual([]);
     });
 
-    test('BUG B: whole level deduction should work', async ({ page }) => {
-      // Similar test as Director
-      await page.click('button:has-text("Whole level")');
-      await page.waitForTimeout(500);
+    test('"Whole level" deduction saves and changes the balances', async ({ page }) => {
+      const db = await dbAs(user);
+      await openConductActions(page, user);
+      await expect(page.getByRole('button', { name: /^Whole level/ }),
+        'Hidden: this role lacks the "Whole-school conduct entries" permission').toBeVisible();
 
-      const levelSelect = page.locator('select').first();
-      await levelSelect.selectOption({ index: 1 });
-      await page.waitForTimeout(500);
+      await page.getByRole('button', { name: /^Whole level/ }).click();
+      const level = await chooseLevelWithStudents(page);
+      const before = await totalMarks(db, level);
+      console.log(`${user}: ${level} has ${before.count} students, total ${before.total}`);
 
-      const offenseSelect = page.locator('select').nth(1);
-      await offenseSelect.selectOption({ index: 1 });
-      await page.waitForTimeout(500);
+      await chooseOffenceAndOneMark(page, 'Deduction');
+      await submitBulk(page, 'Whole Level');
+      await expect.poll(async () => (await totalMarks(db, level)).total, { timeout: 20_000 }).toBeLessThan(before.total);
+      const afterDeduction = (await totalMarks(db, level)).total;
 
-      const submitButton = page.locator('button[type="submit"]:has-text("Record conduct entry")');
-      const isDisabled = await submitButton.isDisabled();
-
-      if (!isDisabled) {
-        await submitButton.click();
-        await expect(page.locator('text=Confirm Whole Level Entry')).toBeVisible({ timeout: 5000 });
-        await page.click('button:has-text("Confirm and submit")');
-        await expect(page.locator('text=Recorded for')).toBeVisible({ timeout: 10000 });
-      } else {
-        await page.screenshot({ path: 'whole-level-disabled-master.png', fullPage: true });
-        throw new Error('Submit button is disabled for whole level entry (Master)');
-      }
-    });
-  });
-
-  test.describe('Single student operations should still work', () => {
-    test.beforeEach(async ({ page }) => {
-      await signIn(page, TEST_DIRECTOR_EMAIL, TEST_DIRECTOR_PASSWORD);
-      await goToConductActions(page);
+      // Put the marks back.
+      await page.getByRole('button', { name: /^Whole level/ }).click();
+      await field(page, 'Class level', 'select').selectOption(level);
+      await chooseOffenceAndOneMark(page, 'Restoration');
+      await submitBulk(page, 'Whole Level');
+      await expect.poll(async () => (await totalMarks(db, level)).total, { timeout: 20_000 }).toBeGreaterThan(afterDeduction);
+      await expectNoErrorPage(page);
     });
 
-    test('Single student deduction', async ({ page }) => {
-      // Make sure we're in "One student" mode
-      await page.click('button:has-text("One student")');
-      await page.waitForTimeout(500);
+    test('"Whole school" deduction saves and changes the balances', async ({ page }) => {
+      const db = await dbAs(user);
+      await openConductActions(page, user);
+      const wholeSchool = page.getByRole('button', { name: /^Whole school/ });
+      await expect(wholeSchool, 'Hidden: this role lacks the "Whole-school conduct entries" permission').toBeVisible();
 
-      // Search for a student
-      const studentInput = page.locator('input[placeholder*="Search"]').first();
-      await studentInput.click();
-      await page.waitForTimeout(500);
+      await wholeSchool.click();
+      await expect(page.getByText(/^Whole school selected: \d+ students?/)).toBeVisible();
+      const before = await totalMarks(db);
+      console.log(`${user}: school has ${before.count} students, total ${before.total}`);
 
-      // Click on first student in the dropdown
-      const firstStudent = page.locator('[role="button"]:has-text("·")').first();
-      if (await firstStudent.count() > 0) {
-        await firstStudent.click();
-        await page.waitForTimeout(500);
+      await chooseOffenceAndOneMark(page, 'Deduction');
+      await submitBulk(page, 'Whole School');
+      await expect.poll(async () => (await totalMarks(db)).total, { timeout: 20_000 }).toBeLessThan(before.total);
+      const afterDeduction = (await totalMarks(db)).total;
 
-        // Select offense
-        const offenseSelect = page.locator('select').nth(1);
-        await offenseSelect.selectOption({ index: 1 });
-
-        // Submit
-        const submitButton = page.locator('button[type="submit"]:has-text("Record conduct entry")');
-        await submitButton.click();
-
-        await expect(page.locator('text=Conduct log recorded successfully')).toBeVisible({ timeout: 10000 });
-      }
-    });
-
-    test('Single student restoration', async ({ page }) => {
-      await page.click('button:has-text("One student")');
-      await page.waitForTimeout(500);
-
-      const studentInput = page.locator('input[placeholder*="Search"]').first();
-      await studentInput.click();
-      await page.waitForTimeout(500);
-
-      const firstStudent = page.locator('[role="button"]:has-text("·")').first();
-      if (await firstStudent.count() > 0) {
-        await firstStudent.click();
-        await page.waitForTimeout(500);
-
-        // Select "Restoration"
-        await page.click('button:has-text("Restoration")');
-        await page.waitForTimeout(500);
-
-        // Enter marks
-        const marksInput = page.locator('input[type="number"]').first();
-        await marksInput.fill('5');
-
-        const submitButton = page.locator('button[type="submit"]:has-text("Record conduct entry")');
-        await submitButton.click();
-
-        await expect(page.locator('text=Conduct log recorded successfully')).toBeVisible({ timeout: 10000 });
-      }
-    });
-
-    test('Single student good deed', async ({ page }) => {
-      await page.click('button:has-text("One student")');
-      await page.waitForTimeout(500);
-
-      const studentInput = page.locator('input[placeholder*="Search"]').first();
-      await studentInput.click();
-      await page.waitForTimeout(500);
-
-      const firstStudent = page.locator('[role="button"]:has-text("·")').first();
-      if (await firstStudent.count() > 0) {
-        await firstStudent.click();
-        await page.waitForTimeout(500);
-
-        // Check if good deed button exists
-        const goodDeedButton = page.locator('button:has-text("Good deed")');
-        if (await goodDeedButton.count() > 0) {
-          await goodDeedButton.click();
-          await page.waitForTimeout(500);
-
-          // Select a good deed category
-          const categorySelect = page.locator('select').first();
-          await categorySelect.selectOption({ index: 1 });
-
-          const submitButton = page.locator('button[type="submit"]:has-text("Record conduct entry")');
-          await submitButton.click();
-
-          await expect(page.locator('text=Conduct log recorded successfully')).toBeVisible({ timeout: 10000 });
-        }
-      }
+      await wholeSchool.click();
+      await chooseOffenceAndOneMark(page, 'Restoration');
+      await submitBulk(page, 'Whole School');
+      await expect.poll(async () => (await totalMarks(db)).total, { timeout: 20_000 }).toBeGreaterThan(afterDeduction);
+      await expectNoErrorPage(page);
     });
   });
+}
 
-  test.describe('BUG C: Platform owner school links', () => {
-    test.beforeEach(async ({ page }) => {
-      await signIn(page, TEST_OWNER_EMAIL, TEST_OWNER_PASSWORD);
-    });
+test.describe('Platform owner school links', () => {
+  test.skip(!hasAccount('owner'), 'TEST_OWNER_* not set in .env');
 
-    test('Clicking school name in /platform should open school detail page', async ({ page }) => {
-      // Go to platform page
-      await page.goto('/platform');
-      await page.waitForLoadState('networkidle');
+  test('a school name in /platform opens that school page, not the list', async ({ page }) => {
+    await signIn(page, 'owner');
+    await page.goto('/platform');
+    const firstSchoolLink = page.locator('table tbody tr a').first();
+    await expect(firstSchoolLink).toBeVisible({ timeout: 30_000 });
+    const schoolName = (await firstSchoolLink.textContent())?.trim() ?? '';
 
-      // Ensure we're on the Schools tab
-      await expect(page.locator('h3, h2').filter({ hasText: 'Platform Admin' })).toBeVisible();
+    await firstSchoolLink.click();
+    await page.waitForURL('**/platform/schools/**');
+    // School details load through a server function; the tabs appear once they arrive.
+    await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(schoolName, { exact: true }).first()).toBeVisible();
+    for (const tab of ['Staff', 'Subscription & Payments', 'Support']) {
+      await expect(page.getByRole('tab', { name: tab })).toBeVisible();
+    }
+    // The school list must be gone (a parent route without <Outlet/> would keep showing it).
+    await expect(page.locator('table tbody tr a')).toHaveCount(0);
 
-      // Find the first school name link
-      const firstSchoolLink = page.locator('table tbody tr a').first();
-
-      if (await firstSchoolLink.count() > 0) {
-        const schoolName = await firstSchoolLink.textContent();
-        console.log('Clicking on school:', schoolName);
-
-        // Click the link
-        await firstSchoolLink.click();
-
-        // Wait for navigation
-        await page.waitForURL((url) => url.pathname.includes('/platform/schools/'), { timeout: 10000 });
-
-        // Should be on the school detail page
-        expect(page.url()).toContain('/platform/schools/');
-
-        // CRITICAL: Assert the school DETAIL CONTENT is visible, not just the URL
-        // The school name should appear as the page heading (greeting in DashboardShell)
-        await expect(page.locator('h1, h2').filter({ hasText: schoolName?.trim() || '' })).toBeVisible({ timeout: 5000 });
-
-        // All four tabs should be visible
-        await expect(page.locator('[role="tab"]:has-text("Overview")')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('[role="tab"]:has-text("Staff")')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('[role="tab"]:has-text("Subscription & Payments")')).toBeVisible({ timeout: 5000 });
-        await expect(page.locator('[role="tab"]:has-text("Support")')).toBeVisible({ timeout: 5000 });
-
-        console.log(`School detail page fully loaded with heading "${schoolName}" and all four tabs visible`);
-      } else {
-        console.log('No schools found in the table');
-        test.skip();
-      }
-    });
+    // A direct load of the same URL (new tab) must show the school page too.
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'Overview' })).toBeVisible({ timeout: 30_000 });
   });
 });

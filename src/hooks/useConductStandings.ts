@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
+import { useAuth } from "@/hooks/useAuth";
+import { scopeToSchool } from "@/lib/tenant";
 
 export type Standing = "critical" | "warning" | "good";
 
@@ -22,10 +24,13 @@ export function useConductStandings() {
   const { data: school } = useSchoolSettings();
   const critical = school?.critical_threshold ?? 20;
   const warning = school?.warning_threshold ?? 30;
+  const { schoolId, isPlatformAdmin } = useAuth();
   const q = useQuery({
-    queryKey: ["student-balances"],
+    queryKey: ["student-balances", schoolId],
+    // The platform owner can read every school, so wait until a school is chosen.
+    enabled: !isPlatformAdmin || Boolean(schoolId),
     queryFn: async () => {
-      const { data, error } = await supabase.from("student_conduct_balances").select("*");
+      const { data, error } = await scopeToSchool(supabase.from("student_conduct_balances").select("*"), schoolId);
       if (error) throw error;
       return data ?? [];
     },

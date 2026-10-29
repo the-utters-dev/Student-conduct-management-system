@@ -32,3 +32,8 @@ dist-ssr
 *.sw?
 .env
 nul
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/

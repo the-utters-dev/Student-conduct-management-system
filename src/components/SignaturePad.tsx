@@ -8,6 +8,20 @@ interface SignaturePadProps {
   className?: string;
 }
 
+// The canvas is drawn at a fixed resolution but shown at the width of its container, so
+// pointer positions (CSS pixels) are scaled into canvas pixels.
+function pointerPosition(
+  canvas: HTMLCanvasElement,
+  e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
+) {
+  const rect = canvas.getBoundingClientRect();
+  const point = "touches" in e ? e.touches[0]! : e;
+  return {
+    x: ((point.clientX - rect.left) * canvas.width) / (rect.width || canvas.width),
+    y: ((point.clientY - rect.top) * canvas.height) / (rect.height || canvas.height),
+  };
+}
+
 export function SignaturePad({ onSave, onClear, width = 400, height = 200, className = "" }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -38,9 +52,7 @@ export function SignaturePad({ onSave, onClear, width = 400, height = 200, class
     setIsDrawing(true);
     setHasDrawn(true);
 
-    const rect = canvas.getBoundingClientRect();
-    const x = "touches" in e ? e.touches[0]!.clientX - rect.left : e.clientX - rect.left;
-    const y = "touches" in e ? e.touches[0]!.clientY - rect.top : e.clientY - rect.top;
+    const { x, y } = pointerPosition(canvas, e);
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -57,9 +69,7 @@ export function SignaturePad({ onSave, onClear, width = 400, height = 200, class
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = "touches" in e ? e.touches[0]!.clientX - rect.left : e.clientX - rect.left;
-    const y = "touches" in e ? e.touches[0]!.clientY - rect.top : e.clientY - rect.top;
+    const { x, y } = pointerPosition(canvas, e);
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;

@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { STANDING_CLASS, STANDING_LABEL, standingOf } from "@/hooks/useConductStandings";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useAuth } from "@/hooks/useAuth";
+import { scopeToSchool } from "@/lib/tenant";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   head: () => ({
@@ -73,30 +74,18 @@ function csvCell(v: unknown) {
 function ReportsPage() {
   const [historyFor, setHistoryFor] = useState<Balance | null>(null);
   const { data: school } = useSchoolSettings();
-  const { schoolId, can } = useAuth();
+  const { schoolId, can, loading: authLoading } = useAuth();
   const criticalThreshold = school?.critical_threshold ?? 20;
   const warningThreshold = school?.warning_threshold ?? 30;
-
-  // Check permission
-  if (!can("view_reports")) {
-    return (
-      <DashboardShell greeting="Reports" dateLine="Conduct trends and analytics">
-        <div className="rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl">
-          <div className="py-12 text-center">
-            <h3 className="font-display text-lg font-bold text-ink">Access not permitted</h3>
-            <p className="mt-2 text-sm text-soft">
-              Your role does not have permission to view reports. Contact your School Director to adjust permissions.
-            </p>
-          </div>
-        </div>
-      </DashboardShell>
-    );
-  }
+  // The permission check returns below every hook: on a full page load the role is not known
+  // on the first render, and returning before the hooks crashed the page (React error 310).
+  const allowed = can("view_reports");
 
   const balancesQ = useQuery({
     queryKey: ["student-balances", schoolId],
+    enabled: allowed,
     queryFn: async (): Promise<Balance[]> => {
-      const { data, error } = await supabase.from("student_conduct_balances").select("*");
+      const { data, error } = await scopeToSchool(supabase.from("student_conduct_balances").select("*"), schoolId);
       if (error) throw error;
       return data as Balance[];
     },
@@ -106,7 +95,7 @@ function ReportsPage() {
 
   const logsQ = useQuery({
     queryKey: ["term-logs", termId, schoolId],
-    enabled: !!termId,
+    enabled: allowed && !!termId,
     queryFn: async (): Promise<Log[]> => {
       const { data, error } = await supabase
         .from("conduct_logs")
@@ -187,6 +176,27 @@ function ReportsPage() {
   const history = logs.filter((l) => l.student_id === historyFor?.student_id);
   const loading = balancesQ.isPending || (!!termId && logsQ.isPending);
   const panel = "rounded-3xl border border-glass-line bg-glass p-6 shadow-panel backdrop-blur-2xl";
+
+  if (!allowed) {
+    return (
+      <DashboardShell greeting="Reports" dateLine="Conduct trends and analytics">
+        <div className={panel}>
+          <div className="py-12 text-center">
+            {authLoading ? (
+              <p className="text-sm text-soft">Loading…</p>
+            ) : (
+              <>
+                <h3 className="font-display text-lg font-bold text-ink">Access not permitted</h3>
+                <p className="mt-2 text-sm text-soft">
+                  Your role does not have permission to view reports. Contact your School Director to adjust permissions.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </DashboardShell>
+    );
+  }
 
   return (
     <DashboardShell greeting="Reports" dateLine={`${termName} · Conduct analytics`}>

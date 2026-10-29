@@ -37,6 +37,16 @@ export const DEFAULT_SETTINGS: SchoolSettings = {
   class_levels: ["S1", "S2", "S3", "S4", "S5", "S6"],
 };
 
+/** Merges a settings row over the defaults; a null column never replaces a default value. */
+export function withDefaultSettings(row: Record<string, unknown> | null | undefined): SchoolSettings {
+  const merged: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+  for (const [key, value] of Object.entries(row ?? {})) {
+    if (value === null && key in DEFAULT_SETTINGS) continue;
+    merged[key] = value;
+  }
+  return merged as unknown as SchoolSettings;
+}
+
 export function useSchoolSettings() {
   const { schoolId } = useAuth();
 
@@ -50,8 +60,10 @@ export function useSchoolSettings() {
           .eq("school_id", schoolId)
           .maybeSingle();
 
-        if (!error && data) {
-          return { ...DEFAULT_SETTINGS, ...(data ?? {}) };
+        // A school without a settings row gets the defaults. Never fall through to the legacy
+        // id=1 row here: it may belong to another school (the platform owner can read every row).
+        if (!error) {
+          return withDefaultSettings(data);
         }
       }
 
@@ -62,7 +74,7 @@ export function useSchoolSettings() {
         .eq("id", 1)
         .maybeSingle();
 
-      return { ...DEFAULT_SETTINGS, ...(data ?? {}) };
+      return withDefaultSettings(data);
     },
   });
 }

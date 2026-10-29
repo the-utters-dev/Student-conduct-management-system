@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
 import { db, insertWithColumnFallback } from "@/lib/evidence";
+import { auditPayload, schoolColumn } from "@/lib/tenant";
 import {
   buildParentMessage,
   smsSegments,
@@ -32,7 +33,7 @@ export function ParentMessageComposer({
   prefilledStudentIds?: string[];
   templateType?: "student_of_week";
 }) {
-  const { user, isDisciplineStaff, school, schoolId } = useAuth();
+  const { user, isDisciplineStaff, school, schoolId, supportView } = useAuth();
   const queryClient = useQueryClient();
   const [channel, setChannel] = useState<MessageChannel>("sms");
   const [text, setText] = useState("");
@@ -83,6 +84,7 @@ export function ParentMessageComposer({
       const { data, dropped } = await insertWithColumnFallback(
         "notification_logs",
         {
+          ...schoolColumn(schoolId),
           conduct_log_id: entry.conductLogId,
           student_id: entry.studentId,
           recipient_phone: phone.trim() || null,
@@ -90,14 +92,15 @@ export function ParentMessageComposer({
           status,
           channel,
         },
-        ["channel"],
+        ["channel", "school_id"],
       );
       await db.from("audit_logs").insert({
+        ...schoolColumn(schoolId),
         user_id: user?.id ?? null,
         action: status === "draft" ? "DRAFT_PARENT_MESSAGE" : "QUEUE_PARENT_MESSAGE",
         entity_type: "notification_logs",
         entity_id: data.id,
-        payload: { conduct_log_id: entry.conductLogId, channel, length: text.length },
+        payload: auditPayload({ conduct_log_id: entry.conductLogId, channel, length: text.length }, supportView),
       });
       return { status, dropped };
     },

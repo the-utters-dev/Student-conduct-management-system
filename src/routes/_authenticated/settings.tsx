@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -53,17 +53,26 @@ const inp = "w-full rounded-xl border border-input bg-background px-3 py-2 text-
 const btn = "rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand shadow-brand-glow disabled:opacity-60";
 
 function SettingsPage() {
-  const { isSchoolDirector, can } = useAuth();
-  const showCategories = isSchoolDirector || can("manage_offences");
-  const showOffences = isSchoolDirector || can("manage_offences");
-  const showCalendar = isSchoolDirector || can("manage_terms");
+  const { isSchoolDirector, can, isPlatformAdmin, schoolId } = useAuth();
+  // The platform owner only gets school tabs while viewing a school (support view).
+  const hasSchool = !isPlatformAdmin || Boolean(schoolId);
+  const showSystem = hasSchool;
+  const showCategories = hasSchool && (isSchoolDirector || can("manage_offences"));
+  const showOffences = hasSchool && (isSchoolDirector || can("manage_offences"));
+  const showCalendar = hasSchool && (isSchoolDirector || can("manage_terms"));
   return (
     <DashboardShell greeting="Settings" dateLine="Profile, appearance & system preferences">
+      {!hasSchool && (
+        <p className="mb-4 rounded-2xl border border-glass-line bg-glass px-4 py-3 text-sm text-soft">
+          School settings appear here when you open a school in support view (Platform, then a school, then
+          "Open school view").
+        </p>
+      )}
       <Tabs defaultValue="profile">
         <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="profile">Profile & Avatar</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
-          <TabsTrigger value="system">System Preferences</TabsTrigger>
+          {showSystem && <TabsTrigger value="system">System Preferences</TabsTrigger>}
           {showCalendar && <TabsTrigger value="calendar">Academic Calendar</TabsTrigger>}
           {showOffences && <TabsTrigger value="offences">Offences</TabsTrigger>}
           {showCategories && <TabsTrigger value="categories">Good Deed Categories</TabsTrigger>}
@@ -72,7 +81,7 @@ function SettingsPage() {
         </TabsList>
         <TabsContent value="profile"><ProfileTab /></TabsContent>
         <TabsContent value="appearance"><AppearanceTab /></TabsContent>
-        <TabsContent value="system"><SystemTab /></TabsContent>
+        {showSystem && <TabsContent value="system"><SystemTab /></TabsContent>}
         {showCalendar && <TabsContent value="calendar"><CalendarTab /></TabsContent>}
         {showOffences && <TabsContent value="offences"><OffencesTab /></TabsContent>}
         {showCategories && <TabsContent value="categories"><CategoriesTab /></TabsContent>}
@@ -84,8 +93,8 @@ function SettingsPage() {
 }
 
 function useCanManageSchool() {
-  const { isSchoolDirector, isPlatformAdmin } = useAuth();
-  return isSchoolDirector || isPlatformAdmin;
+  const { isSchoolDirector, isPlatformAdmin, schoolId } = useAuth();
+  return isSchoolDirector || (isPlatformAdmin && Boolean(schoolId));
 }
 
 async function saveSchool(patch: Partial<SchoolSettings>, schoolId: string | null) {
@@ -1581,40 +1590,6 @@ function CertificatesTab() {
     setDirectorTitle(settings?.director_title ?? "School Director");
   }, [settings, profile]);
 
-  return (
-    <div className="space-y-6">
-      {/* Quick Links */}
-      <div className={panel}>
-        <h3 className="font-display text-lg font-bold text-ink">Certificate Management</h3>
-        <p className="mt-1 text-sm text-soft">
-          Manage certificate templates, issued certificates, and branding.
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <a
-            href="/settings/certificates"
-            className="rounded-xl bg-glass-bright p-4 text-left ring-1 ring-hairline hover:ring-2 hover:ring-brand"
-          >
-            <h4 className="font-semibold text-ink">Templates & Register</h4>
-            <p className="mt-1 text-xs text-soft">
-              Create and edit certificate templates. View and revoke issued certificates.
-            </p>
-          </a>
-          <a
-            href="/certificates/bulk"
-            className="rounded-xl bg-glass-bright p-4 text-left ring-1 ring-hairline hover:ring-2 hover:ring-brand"
-          >
-            <h4 className="font-semibold text-ink">Bulk Certificates</h4>
-            <p className="mt-1 text-xs text-soft">
-              Issue certificates to multiple students at once (e.g., S6 graduation).
-            </p>
-          </a>
-        </div>
-      </div>
-
-      {renderSignatureAndStampSections()}
-    </div>
-  );
-
   function renderSignatureAndStampSections() {
     return (
       <>
@@ -1917,6 +1892,42 @@ function CertificatesTab() {
 
     void removeWhiteBackground(uploadedStampRaw, threshold).then(setStampPreview);
   }, [uploadedStampRaw, removeWhiteBg, threshold]);
+
+  // The return must come after every const and hook above: rendering earlier read
+  // `lastUpdated` before it was initialised and crashed the whole Settings page.
+  return (
+    <div className="space-y-6">
+      {/* Quick Links */}
+      <div className={panel}>
+        <h3 className="font-display text-lg font-bold text-ink">Certificate Management</h3>
+        <p className="mt-1 text-sm text-soft">
+          Manage certificate templates, issued certificates, and branding.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Link
+            to="/settings/certificates"
+            className="rounded-xl bg-glass-bright p-4 text-left ring-1 ring-hairline hover:ring-2 hover:ring-brand"
+          >
+            <h4 className="font-semibold text-ink">Templates & Register</h4>
+            <p className="mt-1 text-xs text-soft">
+              Create and edit certificate templates. View and revoke issued certificates.
+            </p>
+          </Link>
+          <Link
+            to="/certificates/bulk"
+            className="rounded-xl bg-glass-bright p-4 text-left ring-1 ring-hairline hover:ring-2 hover:ring-brand"
+          >
+            <h4 className="font-semibold text-ink">Bulk Certificates</h4>
+            <p className="mt-1 text-xs text-soft">
+              Issue certificates to multiple students at once (e.g., S6 graduation).
+            </p>
+          </Link>
+        </div>
+      </div>
+
+      {renderSignatureAndStampSections()}
+    </div>
+  );
 }
 
 function StaffTab() {

@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const Route = createFileRoute("/_authenticated/settings/$/certificates")({
+export const Route = createFileRoute("/_authenticated/settings_/certificates")({
   component: CertificatesPage,
 });
 
