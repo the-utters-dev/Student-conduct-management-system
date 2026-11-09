@@ -69,7 +69,7 @@ function SettingsPage() {
         </p>
       )}
       <Tabs defaultValue="profile">
-        <TabsList className="mb-4 flex-wrap">
+        <TabsList className="mb-4 flex w-full flex-nowrap justify-start overflow-x-auto [mask-image:linear-gradient(90deg,transparent,black_1rem,black_calc(100%_-_1rem),transparent)]">
           <TabsTrigger value="profile">Profile & Avatar</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           {showSystem && <TabsTrigger value="system">System Preferences</TabsTrigger>}

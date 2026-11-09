@@ -160,10 +160,13 @@ export const getCertificateBrandingUrl = createServerFn({ method: "GET" })
     return d;
   })
   .handler(async ({ data, context }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { schoolId, admin } = await requireCertificateIssuer(context as never);
+    if (![`${schoolId}/signature.png`, `${schoolId}/stamp.png`].includes(data.path)) {
+      throw new Error("You can only view certificate branding for your own school.");
+    }
 
     // Generate signed URL (expires in 1 hour)
-    const { data: urlData, error } = await supabaseAdmin.storage
+    const { data: urlData, error } = await admin.storage
       .from("school-branding")
       .createSignedUrl(data.path, 3600);
 
@@ -184,13 +187,48 @@ export interface CertificateTemplate {
   title: string;
   body: string;
   accent_color: string;
+  secondary_color?: string;
+  header_text?: string;
   border_style: "classic" | "modern" | "minimal";
   orientation: "landscape" | "portrait";
   show_signature: boolean;
   show_stamp: boolean;
+  show_qr?: boolean;
+  signature_position?: "left" | "center" | "right";
+  stamp_position?: "left" | "center" | "right";
+  qr_position?: "left" | "center" | "right";
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+type CertificatePosition = "left" | "center" | "right";
+
+function isMissingCertificateDesignColumn(error: { code?: string } | null) {
+  return error?.code === "42703" || error?.code === "PGRST204";
+}
+
+function validateCertificateDesign(
+  data: {
+    accent_color?: string;
+    secondary_color?: string;
+    signature_position?: CertificatePosition;
+    stamp_position?: CertificatePosition;
+    qr_position?: CertificatePosition;
+  },
+) {
+  const validColor = /^#[0-9a-f]{6}$/i;
+  if (data.accent_color !== undefined && !validColor.test(data.accent_color)) {
+    throw new Error("Primary color must be a six-digit hex color.");
+  }
+  if (data.secondary_color !== undefined && !validColor.test(data.secondary_color)) {
+    throw new Error("Secondary color must be a six-digit hex color.");
+  }
+  for (const position of [data.signature_position, data.stamp_position, data.qr_position]) {
+    if (position !== undefined && !["left", "center", "right"].includes(position)) {
+      throw new Error("Certificate placement must be left, center, or right.");
+    }
+  }
 }
 
 /**
@@ -205,40 +243,66 @@ export const createCertificateTemplate = createServerFn({ method: "POST" })
     title: string;
     body: string;
     accent_color?: string;
+    secondary_color?: string;
+    header_text?: string;
     border_style?: "classic" | "modern" | "minimal";
     orientation?: "landscape" | "portrait";
     show_signature?: boolean;
     show_stamp?: boolean;
+    show_qr?: boolean;
+    signature_position?: CertificatePosition;
+    stamp_position?: CertificatePosition;
+    qr_position?: CertificatePosition;
   }) => {
     if (!d.name?.trim() || !d.kind || !d.title?.trim() || !d.body?.trim()) {
       throw new Error("Name, kind, title, and body are required.");
     }
+    validateCertificateDesign(d);
     return d;
   })
   .handler(async ({ data, context }) => {
     const { schoolId, admin } = await requireSchoolDirector(context as never);
     const userId = (context as { userId: string }).userId;
 
-    const { data: template, error } = await (admin.from("certificate_templates" as never) as any)
-      .insert({
+    const values = {
         school_id: schoolId,
         name: data.name.trim(),
         kind: data.kind,
         title: data.title.trim(),
         body: data.body.trim(),
         accent_color: data.accent_color ?? "#3b82f6",
+        secondary_color: data.secondary_color ?? "#b89155",
+        header_text: data.header_text?.trim() ?? "",
         border_style: data.border_style ?? "classic",
         orientation: data.orientation ?? "landscape",
         show_signature: data.show_signature ?? true,
         show_stamp: data.show_stamp ?? true,
+        show_qr: data.show_qr ?? true,
+        signature_position: data.signature_position ?? "left",
+        stamp_position: data.stamp_position ?? "center",
+        qr_position: data.qr_position ?? "right",
         created_by: userId,
-      })
+      };
+    const table = admin.from("certificate_templates" as never) as any;
+    let { data: template, error } = await table
+      .insert(values)
       .select()
       .single();
 
+    let designOptionsSaved = true;
+    if (error && isMissingCertificateDesignColumn(error)) {
+      const legacyValues: Record<string, unknown> = { ...values };
+      for (const key of ["secondary_color", "header_text", "show_qr", "signature_position", "stamp_position", "qr_position"]) {
+        delete legacyValues[key];
+      }
+      const fallback = await table.insert(legacyValues).select().single();
+      template = fallback.data;
+      error = fallback.error;
+      designOptionsSaved = false;
+    }
     if (error) throw new Error(error.message);
 
-    return template;
+    return designOptionsSaved ? template : { ...template, design_options_saved: false };
   });
 
 /**
@@ -250,16 +314,27 @@ export const updateCertificateTemplate = createServerFn({ method: "POST" })
   .inputValidator((d: {
     id: string;
     name?: string;
+    kind?: "good_deed" | "student_of_period" | "graduation" | "custom";
     title?: string;
     body?: string;
     accent_color?: string;
+    secondary_color?: string;
+    header_text?: string;
     border_style?: "classic" | "modern" | "minimal";
     orientation?: "landscape" | "portrait";
     show_signature?: boolean;
     show_stamp?: boolean;
+    show_qr?: boolean;
+    signature_position?: CertificatePosition;
+    stamp_position?: CertificatePosition;
+    qr_position?: CertificatePosition;
     is_active?: boolean;
   }) => {
     if (!UUID.test(d.id)) throw new Error("Invalid template ID.");
+    if (d.kind !== undefined && !["good_deed", "student_of_period", "graduation", "custom"].includes(d.kind)) {
+      throw new Error("Invalid certificate type.");
+    }
+    validateCertificateDesign(d);
     return d;
   })
   .handler(async ({ data, context }) => {
@@ -267,23 +342,44 @@ export const updateCertificateTemplate = createServerFn({ method: "POST" })
 
     const updates: Record<string, any> = {};
     if (data.name !== undefined) updates["name"] = data.name.trim();
+    if (data.kind !== undefined) updates["kind"] = data.kind;
     if (data.title !== undefined) updates["title"] = data.title.trim();
     if (data.body !== undefined) updates["body"] = data.body.trim();
     if (data.accent_color !== undefined) updates["accent_color"] = data.accent_color;
+    if (data.secondary_color !== undefined) updates["secondary_color"] = data.secondary_color;
+    if (data.header_text !== undefined) updates["header_text"] = data.header_text.trim();
     if (data.border_style !== undefined) updates["border_style"] = data.border_style;
     if (data.orientation !== undefined) updates["orientation"] = data.orientation;
     if (data.show_signature !== undefined) updates["show_signature"] = data.show_signature;
     if (data.show_stamp !== undefined) updates["show_stamp"] = data.show_stamp;
+    if (data.show_qr !== undefined) updates["show_qr"] = data.show_qr;
+    if (data.signature_position !== undefined) updates["signature_position"] = data.signature_position;
+    if (data.stamp_position !== undefined) updates["stamp_position"] = data.stamp_position;
+    if (data.qr_position !== undefined) updates["qr_position"] = data.qr_position;
     if (data.is_active !== undefined) updates["is_active"] = data.is_active;
 
-    const { error } = await (admin.from("certificate_templates" as never) as any)
+    const query = admin.from("certificate_templates" as never) as any;
+    let { error } = await query
       .update(updates)
       .eq("id", data.id)
       .eq("school_id", schoolId);
 
+    let designOptionsSaved = true;
+    if (error && isMissingCertificateDesignColumn(error)) {
+      const legacyUpdates = { ...updates };
+      for (const key of ["secondary_color", "header_text", "show_qr", "signature_position", "stamp_position", "qr_position"]) {
+        delete legacyUpdates[key];
+      }
+      const fallback = await query
+        .update(legacyUpdates)
+        .eq("id", data.id)
+        .eq("school_id", schoolId);
+      error = fallback.error;
+      designOptionsSaved = false;
+    }
     if (error) throw new Error(error.message);
 
-    return { ok: true };
+    return { ok: true, design_options_saved: designOptionsSaved };
   });
 
 // =============================================================================

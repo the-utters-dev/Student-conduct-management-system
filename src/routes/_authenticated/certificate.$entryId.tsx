@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { DashboardShell } from "@/components/DashboardShell";
 import { QRCode } from "@/components/QRCode";
+import { renderCertificateTemplateText } from "@/lib/certificate-template";
 import {
   getCertificateBrandingUrl,
   issueCertificate,
@@ -39,7 +40,7 @@ function CertificatePage() {
           reason,
           good_deed_category_id,
           student_id,
-          students!inner(id, full_name, class_name, admission_no),
+          students!inner(id, full_name, class_name, admission_no, gender),
           good_deed_categories(name)
         `)
         .eq("id", params.entryId)
@@ -52,7 +53,7 @@ function CertificatePage() {
         reason: string | null;
         good_deed_category_id: string | null;
         student_id: string;
-        students: { id: string; full_name: string; class_name: string; admission_no: string };
+        students: { id: string; full_name: string; class_name: string; admission_no: string; gender: string | null };
         good_deed_categories: { name: string } | null;
       };
     },
@@ -106,6 +107,11 @@ function CertificatePage() {
         month: "long",
         year: "numeric",
       });
+      const issueDate = new Date().toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
 
       return await issueCertificate({
         data: {
@@ -115,13 +121,18 @@ function CertificatePage() {
           data: {
             school_name: school?.school_name ?? "School",
             student_name: entry.students.full_name,
+            gender: entry.students.gender ?? "",
             class: entry.students.class_name,
+            class_level: entry.students.class_name,
             admission_no: entry.students.admission_no,
             category: categoryName,
             details: entry.reason ?? "",
             date,
+            issue_date: issueDate,
             certificate_title: activeTemplate.title,
             director_name: school?.director_name ?? "",
+            academic_year: school?.academic_year ?? "",
+            conduct_score: "N/A",
           },
         },
       } as never);
@@ -276,7 +287,9 @@ function CertificatePage() {
                 template={activeTemplate}
                 school={school}
                 studentName={entry.students.full_name}
+                gender={entry.students.gender ?? ""}
                 studentClass={entry.students.class_name}
+                academicYear={school?.academic_year ?? ""}
                 admissionNo={entry.students.admission_no}
                 categoryName={categoryName}
                 date={date}
@@ -295,7 +308,9 @@ function CertificatePage() {
             template={activeTemplate}
             school={school}
             studentName={entry.students.full_name}
+            gender={entry.students.gender ?? ""}
             studentClass={entry.students.class_name}
+            academicYear={school?.academic_year ?? ""}
             admissionNo={entry.students.admission_no}
             categoryName={categoryName}
             date={date}
@@ -313,7 +328,9 @@ function CertificateContent({
   template,
   school,
   studentName,
+  gender,
   studentClass,
+  academicYear,
   admissionNo,
   categoryName,
   date,
@@ -324,7 +341,9 @@ function CertificateContent({
   template: CertificateTemplate;
   school: any;
   studentName: string;
+  gender: string;
   studentClass: string;
+  academicYear: string;
   admissionNo: string;
   categoryName: string;
   date: string;
@@ -332,8 +351,9 @@ function CertificateContent({
   issuedCertificate: IssuedCertificate | null | undefined;
   verificationUrl?: string | undefined;
 }) {
+  const { schoolId } = useAuth();
   const { data: signatureUrl } = useQuery({
-    queryKey: ["signature-url", school?.signature_path],
+    queryKey: ["signature-url", schoolId, school?.signature_path],
     queryFn: async () => {
       if (!school?.signature_path) return null;
       const result = await getCertificateBrandingUrl({ data: { path: school.signature_path } } as never);
@@ -343,7 +363,7 @@ function CertificateContent({
   });
 
   const { data: stampUrl } = useQuery({
-    queryKey: ["stamp-url", school?.stamp_path],
+    queryKey: ["stamp-url", schoolId, school?.stamp_path],
     queryFn: async () => {
       if (!school?.stamp_path) return null;
       const result = await getCertificateBrandingUrl({ data: { path: school.stamp_path } } as never);
@@ -355,25 +375,28 @@ function CertificateContent({
   const schoolName = school?.school_name ?? "School";
   const logoUrl = school?.logo_url;
 
-  // Replace placeholders in title and body
-  const replacePlaceholders = (text: string) => {
-    return text
-      .replace(/\{student_name\}/g, studentName)
-      .replace(/\{class\}/g, studentClass)
-      .replace(/\{admission_no\}/g, admissionNo)
-      .replace(/\{category\}/g, categoryName)
-      .replace(/\{details\}/g, reason ?? "")
-      .replace(/\{date\}/g, date)
-      .replace(/\{school_name\}/g, schoolName)
-      .replace(/\{director_name\}/g, school?.director_name ?? "School Director")
-      .replace(/\{conduct_score\}/g, "N/A")
-      .replace(/\{max_marks\}/g, "N/A")
-      .replace(/\{term\}/g, "N/A")
-      .replace(/\{academic_year\}/g, new Date().getFullYear().toString());
+  const certificateData = issuedCertificate?.data ?? {};
+  const tokenValues = {
+    student_name: studentName,
+    gender: String(certificateData.gender ?? gender),
+    class: studentClass,
+    class_level: studentClass,
+    admission_no: admissionNo,
+    category: categoryName,
+    details: reason ?? "",
+    date,
+    issue_date: String(certificateData.issue_date ?? (issuedCertificate ? new Date(issuedCertificate.issued_at).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB"))),
+    school_name: schoolName,
+    director_name: school?.director_name ?? "School Director",
+    conduct_score: String(certificateData.conduct_score ?? "N/A"),
+    max_marks: String(certificateData.max_marks ?? "N/A"),
+    term: String(certificateData.term ?? "N/A"),
+    academic_year: String(certificateData.academic_year ?? academicYear ?? new Date().getFullYear()),
+    certificate_title: String(certificateData.certificate_title ?? template.title),
   };
-
-  const renderedTitle = replacePlaceholders(template.title);
-  const renderedBody = replacePlaceholders(template.body);
+  const renderedTitle = renderCertificateTemplateText(template.title, tokenValues);
+  const renderedBody = renderCertificateTemplateText(template.body, tokenValues);
+  const renderedHeader = renderCertificateTemplateText(template.header_text || schoolName, tokenValues);
 
   // Border style classes
   const borderClass =
@@ -382,7 +405,7 @@ function CertificateContent({
     "border";
 
   return (
-    <div className={`${borderClass} p-8`} style={{ borderColor: template.accent_color }}>
+    <div className={`${borderClass} p-8`} style={{ borderColor: template.secondary_color ?? template.accent_color }}>
       <div className="flex flex-col items-center text-center">
         {/* Header with logo */}
         <div className="mb-8 flex items-center gap-4">
@@ -395,12 +418,12 @@ function CertificateContent({
           )}
           <div>
             <h1 className="font-display text-3xl font-bold text-ink">{schoolName}</h1>
-            <p className="text-sm text-soft">School Conduct & Discipline Management</p>
+            <p className="text-sm text-soft">{renderedHeader}</p>
           </div>
         </div>
 
         {/* Certificate title */}
-        <div className="mb-8 w-full border-b-2 border-t-2 py-4" style={{ borderColor: template.accent_color }}>
+        <div className="mb-8 w-full border-b-2 border-t-2 py-4" style={{ borderColor: template.secondary_color ?? template.accent_color }}>
           <h2 className="font-display text-4xl font-bold" style={{ color: template.accent_color }}>
             {renderedTitle}
           </h2>
@@ -412,26 +435,11 @@ function CertificateContent({
         </div>
 
         {/* Signature and Stamp */}
-        <div className="mt-12 flex w-full max-w-lg items-end justify-between">
-          {/* Signature section */}
+        <div className="mt-12 grid w-full max-w-3xl grid-cols-3 items-end gap-3">
           {template.show_signature && (
-            <div className="relative flex flex-col items-center">
+            <div className="relative flex flex-col items-center text-center" style={{ gridColumnStart: certificatePositionColumn(template.signature_position ?? "left") }}>
               {signatureUrl ? (
-                <div className="relative">
-                  <img
-                    src={signatureUrl}
-                    alt="Director signature"
-                    className="h-auto w-48 max-w-full object-contain"
-                  />
-                  {/* Stamp overlapping signature */}
-                  {template.show_stamp && stampUrl && (
-                    <img
-                      src={stampUrl}
-                      alt="School stamp"
-                      className="absolute bottom-0 right-0 h-20 w-20 translate-x-4 translate-y-2 object-contain opacity-70"
-                    />
-                  )}
-                </div>
+                <img src={signatureUrl} alt="Director signature" className="h-auto w-40 max-w-full object-contain" />
               ) : (
                 <div className="h-16 w-48 border-b border-ink/30" />
               )}
@@ -443,9 +451,14 @@ function CertificateContent({
             </div>
           )}
 
-          {/* QR Code and Serial (only if issued) */}
-          {issuedCertificate && verificationUrl && (
-            <div className="flex flex-col items-center gap-2">
+          {template.show_stamp && stampUrl && (
+            <div className="flex justify-center" style={{ gridColumnStart: certificatePositionColumn(template.stamp_position ?? "center") }}>
+              <img src={stampUrl} alt="School stamp" className="h-16 w-16 object-contain opacity-80" />
+            </div>
+          )}
+
+          {(template.show_qr ?? true) && issuedCertificate && verificationUrl && (
+            <div className="flex flex-col items-center gap-2" style={{ gridColumnStart: certificatePositionColumn(template.qr_position ?? "right") }}>
               <QRCode value={verificationUrl} size={80} />
               <p className="text-xs font-mono text-faint">{issuedCertificate.serial_no}</p>
             </div>
@@ -464,4 +477,8 @@ function CertificateContent({
       </div>
     </div>
   );
+}
+
+function certificatePositionColumn(position: CertificateTemplate["signature_position"]) {
+  return position === "center" ? 2 : position === "right" ? 3 : 1;
 }

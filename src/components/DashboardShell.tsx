@@ -1,27 +1,40 @@
 import { Link, LinkProps, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
-import { Menu } from "lucide-react";
+import {
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Home,
+  Menu,
+  ScrollText,
+  Settings2,
+  Users,
+  Building2,
+  type LucideIcon,
+} from "lucide-react";
 import avatar from "@/assets/avatar.png";
 import { useAuth } from "@/hooks/useAuth";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { useConductStandings } from "@/hooks/useConductStandings";
 import { SchoolPicker, SupportViewBanner } from "@/components/SupportView";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 // Pages that show one school's data. The platform owner must pick a school (support view) first.
 const SCHOOL_PAGES = new Set(["/", "/students", "/conduct-actions", "/reports", "/audit-logs"]);
 
 const NAV_ITEMS = [
-  { label: "Dashboard", to: "/", letter: "D", disciplineOnly: false },
-  { label: "Students", to: "/students", letter: "S", disciplineOnly: false },
-  { label: "Conduct Actions", to: "/conduct-actions", letter: "A", disciplineOnly: false },
-  { label: "Reports", to: "/reports", letter: "R", disciplineOnly: false },
-  { label: "Audit Logs", to: "/audit-logs", letter: "L", disciplineOnly: false },
-  { label: "Settings", to: "/settings", letter: "⚙", disciplineOnly: false },
-  { label: "Platform", to: "/platform", letter: "P", disciplineOnly: false, adminOnly: true },
+  { label: "Dashboard", to: "/", icon: Home, disciplineOnly: false },
+  { label: "Students", to: "/students", icon: Users, disciplineOnly: false },
+  { label: "Conduct Actions", to: "/conduct-actions", icon: ClipboardList, disciplineOnly: false },
+  { label: "Reports", to: "/reports", icon: BarChart3, disciplineOnly: false },
+  { label: "Audit Logs", to: "/audit-logs", icon: ScrollText, disciplineOnly: false },
+  { label: "Settings", to: "/settings", icon: Settings2, disciplineOnly: false },
+  { label: "Platform", to: "/platform", icon: Building2, disciplineOnly: false, adminOnly: true },
 ] as {
   label: string;
   to: "/" | "/students" | "/conduct-actions" | "/reports" | "/audit-logs" | "/settings" | "/platform";
-  letter: string;
+  icon: LucideIcon;
   disciplineOnly: boolean;
   adminOnly?: boolean;
 }[];
@@ -32,40 +45,37 @@ function SidebarLink({
   item,
   active,
   onNavigate,
+  collapsed = false,
 }: {
   item: NavItem;
   active: boolean;
   onNavigate?: () => void;
+  collapsed?: boolean;
 }) {
+  const Icon = item.icon;
   return (
     <Link
       to={item.to}
       activeOptions={{ exact: true }}
       onClick={onNavigate}
+      title={collapsed ? item.label : undefined}
+      aria-label={collapsed ? item.label : undefined}
       className={
         active
-          ? "flex items-center gap-3 rounded-2xl bg-brand/10 px-3 py-2.5 ring-1 ring-brand/20"
-          : "flex items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-glass-bright"
+          ? `flex items-center ${collapsed ? "justify-center" : "gap-3"} rounded-2xl bg-brand/10 px-3 py-2.5 ring-1 ring-brand/20`
+          : `flex items-center ${collapsed ? "justify-center" : "gap-3"} rounded-2xl px-3 py-2.5 transition hover:bg-glass-bright`
       }
     >
       <span
         className={
           active
-            ? "grid h-8 w-8 place-items-center rounded-xl bg-brand text-sm font-bold text-white shadow-brand-glow"
-            : "grid h-8 w-8 place-items-center rounded-xl bg-glass-bright text-sm font-bold text-soft ring-1 ring-hairline"
+            ? "grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand text-white shadow-brand-glow"
+            : "grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-glass-bright text-soft ring-1 ring-hairline"
         }
       >
-        {item.letter}
+        <Icon size={18} aria-hidden="true" />
       </span>
-      <span
-        className={
-          active
-            ? "text-sm font-semibold text-ink"
-            : "text-sm font-medium text-body"
-        }
-      >
-        {item.label}
-      </span>
+      {!collapsed && <span className={active ? "text-sm font-semibold text-ink" : "text-sm font-medium text-body"}>{item.label}</span>}
     </Link>
   );
 }
@@ -78,6 +88,7 @@ interface DashboardShellProps {
 
 export function DashboardShell({ greeting, dateLine, children }: DashboardShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const { profile, school: tenantSchool, role, scope, isDisciplineStaff, isPlatformAdmin, supportView, tenancyEnabled, schoolId, can, roleLabel, signOut } = useAuth();
@@ -109,6 +120,8 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
   const openCases = atRisk.length;
   const displayName = profile?.full_name?.trim() || profile?.email || "Staff member";
   const scopeBadge = scope === "Female" ? "Girls" : scope === "Male" ? "Boys" : null;
+  const breadcrumbs = getBreadcrumbs(pathname, greeting);
+  const backPath = getBackPath(pathname);
 
   return (
     <div className="relative min-h-screen overflow-x-clip font-sans text-body antialiased">
@@ -117,18 +130,9 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
       <div className="bloom bloom-b" />
       <div className="bloom bloom-c" />
 
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <button
-            type="button"
-            aria-label="Close navigation menu"
-            className="absolute inset-0 bg-slate-950/35"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          <aside
-            id="mobile-navigation"
-            className="relative h-full w-[min(20rem,85vw)] overflow-y-auto border-r border-glass-line bg-glass p-4 shadow-panel-lg backdrop-blur-2xl"
-          >
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent id="mobile-navigation" side="left" className="w-[min(20rem,85vw)] max-w-[20rem] overflow-y-auto border-r border-glass-line bg-glass p-4 shadow-panel-lg backdrop-blur-2xl md:hidden">
+          <SheetTitle className="sr-only">Main navigation</SheetTitle>
             <div className="flex items-center gap-3 px-2 py-3">
               {school?.logo_url ? (
                 <img src={school.logo_url} alt="School logo" className="h-11 w-11 rounded-2xl object-cover ring-1 ring-hairline" />
@@ -153,19 +157,18 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
                   <SidebarLink
                     key={item.to}
                     item={item}
-                    active={pathname === item.to}
+                    active={pathname === item.to || (item.to !== "/" && pathname.startsWith(`${item.to}/`))}
                     onNavigate={() => setMobileMenuOpen(false)}
                   />
                 ))}
               </nav>
             </div>
-          </aside>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
       <div className="relative mx-auto flex min-h-screen max-w-[1440px] gap-3 p-3 md:gap-6 md:p-6">
-        <aside className="hidden w-64 shrink-0 rounded-3xl border border-glass-line bg-glass shadow-panel-lg backdrop-blur-2xl md:block">
-          <div className="flex items-center gap-3 px-6 py-6">
+        <aside className={`hidden shrink-0 rounded-3xl border border-glass-line bg-glass shadow-panel-lg backdrop-blur-2xl transition-[width] duration-300 md:block ${sidebarCollapsed ? "w-20" : "w-64"}`}>
+          <div className={`flex items-center ${sidebarCollapsed ? "justify-center px-3" : "gap-3 px-6"} py-6`}>
             {school?.logo_url ? (
               <img src={school.logo_url} alt="School logo" className="h-11 w-11 rounded-2xl object-cover ring-1 ring-hairline" />
             ) : (
@@ -173,24 +176,35 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
                 <span className="font-display text-lg font-bold">S</span>
               </div>
             )}
-            <div className="leading-tight">
+            {!sidebarCollapsed && <div className="min-w-0 leading-tight">
               <div className="font-display text-[15px] font-bold text-ink">{schoolName}</div>
               <div className="text-[11px] uppercase tracking-[0.14em] text-faint">
                 Conduct &amp; Discipline
               </div>
-            </div>
+            </div>}
           </div>
-          <div className="px-4">
+          <div className={sidebarCollapsed ? "px-2" : "px-4"}>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className={`mb-3 flex h-9 w-full items-center rounded-xl text-soft transition hover:bg-glass-bright hover:text-ink ${sidebarCollapsed ? "justify-center" : "justify-end px-3"}`}
+            >
+              {sidebarCollapsed ? <ChevronRight size={18} aria-hidden="true" /> : <ChevronLeft size={18} aria-hidden="true" />}
+            </button>
+            {!sidebarCollapsed && (
             <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
               Main
             </div>
-            <nav className="space-y-1">
+            )}
+            <nav aria-label="Main navigation" className="space-y-1">
               {navItems.map((item) => (
-                <SidebarLink key={item.to} item={item} active={pathname === item.to} />
+              <SidebarLink key={item.to} item={item} active={pathname === item.to || (item.to !== "/" && pathname.startsWith(`${item.to}/`))} collapsed={sidebarCollapsed} />
               ))}
             </nav>
           </div>
-          <div className="m-4 mt-6 rounded-2xl border border-glass-line bg-glass-soft p-4">
+          {!sidebarCollapsed && <div className="m-4 mt-6 rounded-2xl border border-glass-line bg-glass-soft p-4">
             <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
               Open cases
             </div>
@@ -202,7 +216,7 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
               ></div>
             </div>
             <div className="mt-2 text-[11px] text-soft">{criticalCount} critical — flagged for review</div>
-          </div>
+          </div>}
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col gap-3 md:gap-6">
@@ -223,12 +237,40 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
             </div>
           </div>
 
-          <header className="flex flex-wrap items-center gap-3 rounded-2xl border border-glass-line bg-glass px-4 py-3 shadow-panel-lg backdrop-blur-2xl md:flex-nowrap md:gap-4 md:rounded-3xl md:px-6 md:py-4">
+          <header className="flex flex-wrap items-center gap-3 rounded-2xl border border-glass-line bg-glass px-4 py-3 shadow-panel-lg backdrop-blur-2xl lg:flex-nowrap lg:gap-4 lg:rounded-3xl lg:px-6 lg:py-4">
+            <div className="order-first flex w-full min-w-0 items-center gap-3 lg:order-none lg:w-auto lg:flex-1">
+              {backPath && (
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: backPath })}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-semibold text-soft transition hover:bg-glass-bright hover:text-ink"
+                >
+                  <ChevronLeft size={15} aria-hidden="true" />
+                  Back
+                </button>
+              )}
+              <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-soft">
+                {breadcrumbs.map((crumb, index) => (
+                  <span key={`${crumb}-${index}`} className="flex min-w-0 shrink-0 items-center gap-1.5">
+                    {index > 0 && <span className="text-faint">/</span>}
+                    {index === breadcrumbs.length - 1 ? (
+                      <span className="truncate font-semibold text-ink">{crumb}</span>
+                    ) : crumb === "Home" ? (
+                      <Link to="/" className="truncate transition hover:text-ink">{crumb}</Link>
+                    ) : crumb === "Settings" ? (
+                      <Link to="/settings" className="truncate transition hover:text-ink">{crumb}</Link>
+                    ) : crumb === "Certificates" ? (
+                      <Link to="/settings/certificates" className="truncate transition hover:text-ink">{crumb}</Link>
+                    ) : <span className="truncate">{crumb}</span>}
+                  </span>
+                ))}
+              </nav>
+            </div>
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="font-display text-lg font-bold text-ink">{greeting}</div>
               <div className="text-[12px] text-soft">{dateLine}</div>
             </div>
-            <div className="order-3 flex w-full min-w-0 items-center gap-2 rounded-2xl bg-glass-bright px-3 py-2 ring-1 ring-hairline md:order-none md:w-auto">
+            <div className="order-3 flex w-full min-w-0 items-center gap-2 rounded-2xl bg-glass-bright px-3 py-2 ring-1 ring-hairline lg:order-none lg:w-auto">
               <span className="text-sm text-faint">⌕</span>
               <input
                 className="w-full bg-transparent text-sm text-body outline-none placeholder:text-faint md:w-52"
@@ -287,3 +329,40 @@ export function DashboardShell({ greeting, dateLine, children }: DashboardShellP
 }
 
 export type { LinkProps };
+
+function getBreadcrumbs(pathname: string, currentLabel: string) {
+  const segments = pathname.split("/").filter(Boolean);
+  const labels: Record<string, string> = {
+    settings: "Settings",
+    certificates: "Certificates",
+    bulk: "Bulk Certificates",
+    students: "Students",
+    "conduct-actions": "Conduct Actions",
+    reports: "Reports",
+    "audit-logs": "Audit Logs",
+    platform: "Platform",
+    certificate: "Certificate",
+  };
+  const crumbs = ["Home"];
+  for (const segment of segments) {
+    const label = labels[segment];
+    if (label && crumbs[crumbs.length - 1] !== label) crumbs.push(label);
+  }
+  if (crumbs.length === 1 || crumbs[crumbs.length - 1] !== currentLabel) crumbs.push(currentLabel);
+  return crumbs;
+}
+
+function getBackPath(pathname: string): "/" | "/settings" | "/settings/certificates" | "/conduct-actions" | "/students" | "/reports" | "/audit-logs" | "/platform" | null {
+  if (pathname.startsWith("/settings/")) return "/settings";
+  if (pathname === "/certificates/bulk") return "/settings/certificates";
+  if (pathname.startsWith("/certificate/")) return "/conduct-actions";
+  if (pathname.startsWith("/students/")) return "/students";
+  if (pathname.startsWith("/conduct-actions/")) return "/conduct-actions";
+  if (pathname.startsWith("/reports/")) return "/reports";
+  if (pathname.startsWith("/audit-logs/")) return "/audit-logs";
+  if (pathname.startsWith("/platform/")) return "/platform";
+  if (pathname !== "/" && !["/students", "/conduct-actions", "/reports", "/audit-logs", "/settings", "/platform"].includes(pathname)) {
+    return "/";
+  }
+  return null;
+}
